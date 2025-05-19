@@ -1,5 +1,6 @@
-#include "server_log.h"
 #include <iostream>
+
+#include "log-server.h"
 
 // NOTE Needs testing.
 // FIXME Make it thread-safe

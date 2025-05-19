@@ -16,3 +16,17 @@
     czy też odczytać tych wartości, bo to ma być niezależne od tych Message-ów.
 
 6. Modus Operandi.
+
+7. Jak zrealizowac równoległość
+    ODP: poll, obczaić laby.
+
+TODO Napisać Makefile
+TODO Zobaczyć, czy działa
+TODO Napisać łączenie się, rozłączanie, itd
+TODO Zobaczyć, czy działa
+
+8. MOŻNA zrobić te argsy ładniejsze: zamiast dwóch plików .cpp zrobić jeden
+    z abstrakcyjną klasą ProgramArgs i dziedzicami Client- i ServerProgramArgs.
+    DONE, Ale args.cpp cały czas jest brzydkie i mokre.
+
+9. Walidowacja argumentów w ProgramArgs.

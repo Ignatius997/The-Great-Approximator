@@ -1,5 +1,6 @@
-#include "client-log.h"
 #include <iostream>
+
+#include "log-client.h"
 
 namespace tga {
 namespace log {

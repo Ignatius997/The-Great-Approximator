@@ -1,0 +1,13 @@
+#include <iostream>
+
+#include "log.h"
+#include "err.h"
+#include "io.h"
+#include "Rational.h"
+#include "log-server.h"
+#include "args.h"
+
+int main(int argc, char* argv[]) {
+    tga::args::parse(argc, argv);
+    tga::args::print();
+}
