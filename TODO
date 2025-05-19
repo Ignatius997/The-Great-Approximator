@@ -1,0 +1,16 @@
+1. C czy C++?
+    ODP: C++
+2. Jak czytać parametr -s w programie klienta? (zobaczyć kod z labów)
+3. Jak przechowywać i przesyłać liczby wymierne? Ciąg znaków czy float?
+    ODP: Ciąg znaków
+4. Jak implementować komunikaty?
+    ODP: Klasy, a konkretnie klasa-korzeń zawierająca prywatny atrybut
+        - `private std::string name`
+        - `protected/private virtual std::string actual_content() const`
+        - `public std::string serialize() const {
+            return name + actual_content() + '\r\n';
+        }`
+5. Jak urządzić się z aproksymacjami, gdzie je przechowywać?
+    Pierwszy taki problem pojawia się w MessageCombinators.h w
+    StateMessage. Pewne jest, że ten StateMessage nie może obliczyć
+    czy też odczytać tych wartości, bo to ma być niezależne od tych Message-ów.
