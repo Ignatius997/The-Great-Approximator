@@ -1,31 +1,40 @@
-#ifndef ARGS_H
-#define ARGS_H
+#ifndef TGA_ARGS_H
+#define TGA_ARGS_H
 
-#include <stdbool.h>
-#include <stdint.h>
+#include <string>
+#include <optional>
+#include <vector>
 
-#define ARGS_DEFAULT_PORT 0
+namespace tga {
+namespace args {
 
-#define ARGOPT_BIND_ADDRESS 'b'
-#define ARGOPT_PORT         'p'
-#define ARGOPT_PEER_ADDRESS 'a'
-#define ARGOPT_PEER_PORT    'r'
+/**
+ * @brief Helper: check if string is a valid integer in range [min, max]
+ * @param str String to check
+ * @param min Minimum value
+ * @param max Maximum value
+ * @param out Output variable to store the parsed value
+ */
+bool parse_int(const std::string& str, int min, int max, int& out);
 
-// Structure definition for ProgramArgs (assumed to be defined elsewhere)
-typedef struct {
-    char *bind_address;
-    uint16_t port;
-    char *peer_address;
-    uint16_t peer_port;
-    bool _ar_provided;
-} ProgramArgs;
+/**
+ * @brief Helper: check if string is a valid unsigned integer in range [min, max]
+ * @param str String to check
+ * @param min Minimum value
+ * @param max Maximum value
+ * @param out Output variable to store the parsed value
+ */
+bool parse_uint(const std::string& str, unsigned min, unsigned max, unsigned& out);
 
-// Functions declarations.
-ProgramArgs args_default(void);
+/**
+ * @brief Helper: split string by delimiter
+ * @param str String to split
+ * @param delim Delimiter character
+ * @return Vector of strings
+ */
+std::vector<std::string> split(const std::string& str, char delim);
 
-void args_validate(const ProgramArgs *program_args);
-void args_load_value(char *arg, const char opt, ProgramArgs *program_args);
-void args_parse(int argc, char *argv[], ProgramArgs *program_args);
-void args_print(ProgramArgs *args);
+} // namespace args
+} // namespace tga
 
-#endif // ARGS_H
+#endif // TGA_ARGS_H
