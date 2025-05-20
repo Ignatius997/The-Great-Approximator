@@ -12,6 +12,10 @@ enum CommunicationPhase {
     // TODO Implement
 };
 
+class ReceiveInfo {
+
+};
+
 } // namespace utils
 } // namespace tga
 

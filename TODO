@@ -1,24 +1,20 @@
 NOTE TODO:
 6. Modus Operandi.
 
+FIXME HOT QUESTION
+Skoro serwer słucha jednocześnie zarówno na ipv6 jak i na ipv4,
+to jak mam mieć niby na jednym porcie, podanym w argumentach, tego nasłuchiwać.
+
 TODO Napisać łączenie się, rozłączanie, itd
 TODO Zobaczyć, czy działa
-
-10. Lista rzeczy, które musimy pamiętać w każdym momencie programu:
-    SERWER:
-    - aktualna linijka w pliku ze współczynnikami (io) DONE
-TODO    - ilość wykonanych już dodawań (<= M)
-    - mapa klient -> klient-info (clients_manager)
-        - klient-info:
-            - aktualny moment komunikacji (między/po/przed jakim komunikatem/komunikatami jesteśmy (klient i serwer)) DONE
-            - aktualne aproksymacje w N punktach DONE
 
 11. Jak zrealizować bezpieczne i wydajne zapisywanie do pliku coeffs przez serwer?
     ODP: Chyba też trzeba zrobić poll-em, tak jak jest chyba zresztą w jakichś labach.
 
 12. Zmienić nazwę io na jakąś lepszą.
-
 13. W C++ nie trzeba używać słowa kluczowego `struct`.
+14. Zamienić makra SERVER i CLIENT na TGA_SERVER i TGA_CLIENT
+15. Zmienić nazwę global na coś lepszego, tam przecież nie ma niczego globalnie modyfikowalnego.
 
 NOTE Q&A:
 1. C czy C++?
@@ -46,3 +42,11 @@ NOTE DONE:
     DONE, Ale args.cpp cały czas jest brzydkie i mokre.
 9. Walidacja argumentów w ProgramArgs.
     DONE
+10. Lista rzeczy, które musimy pamiętać w każdym momencie programu:
+    SERWER:
+    - aktualna linijka w pliku ze współczynnikami (io) DONE
+    - ilość wykonanych już dodawań (<= M) (clients_manager) DONE
+    - mapa klient -> klient-info (clients_manager) DONE
+        - klient-info:
+            - aktualny moment komunikacji (między/po/przed jakim komunikatem/komunikatami jesteśmy (klient i serwer)) DONE
+            - aktualne aproksymacje w N punktach DONE

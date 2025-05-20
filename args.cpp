@@ -5,10 +5,11 @@
 #include <string>
 #include <iostream>
 #include <memory>
+#include <cassert>
 
 #include "args.h"
 #include "err.h"
-#include "netutil.h"
+#include "netutils.h"
 
 namespace tga {
 namespace args {
@@ -28,21 +29,26 @@ static bool parse_uint(const std::string& str, unsigned min, unsigned max, unsig
 }
 
 class ProgramArgs {
+protected:
+    unsigned port = 0;
+
 public:
     virtual void parse(int argc, char** argv) = 0;
     virtual void print() const = 0;
     virtual ~ProgramArgs() = default;
+    unsigned getPort() { return port; }
 };
 
 #ifdef SERVER
 class ServerArgs : public ProgramArgs {
-public:
-    unsigned port = 0;
-    unsigned k = 100;
-    unsigned n = 4;
-    unsigned m = 131;
+protected:
+    // unsigned port = 0;
+    unsigned K = 100;
+    unsigned N = 4;
+    unsigned M = 131;
     std::string file;
 
+public:
     void parse(int argc, char** argv) override final {
         bool port_set = false, k_set = false, n_set = false, m_set = false, file_set = false;
         for (int i = 1; i < argc; ++i) {
@@ -57,21 +63,21 @@ public:
             } else if (arg == "-k" && i + 1 < argc) {
                 if (k_set) tga::err::error("Parameter -k specified multiple times");
                 k_set = true;
-                if (!parse_uint(argv[++i], 1, 10000, k)) {
+                if (!parse_uint(argv[++i], 1, 10000, K)) {
                     tga::err::error("Invalid K value");
                     std::exit(1);
                 }
             } else if (arg == "-n" && i + 1 < argc) {
                 if (n_set) tga::err::error("Parameter -n specified multiple times");
                 n_set = true;
-                if (!parse_uint(argv[++i], 1, 8, n)) {
+                if (!parse_uint(argv[++i], 1, 8, N)) {
                     tga::err::error("Invalid N value");
                     std::exit(1);
                 }
             } else if (arg == "-m" && i + 1 < argc) {
                 if (m_set) tga::err::error("Parameter -m specified multiple times");
                 m_set = true;
-                if (!parse_uint(argv[++i], 1, 12341234, m)) {
+                if (!parse_uint(argv[++i], 1, 12341234, M)) {
                     tga::err::error("Invalid M value");
                     std::exit(1);
                 }
@@ -90,12 +96,14 @@ public:
         }
     }
 
+    unsigned getM() { return M; }
+
     void print() const override final {
         std::cout << "ServerArgs:\n";
-        std::cout << "  port = " << port << "\n";
-        std::cout << "  k = " << k << "\n";
-        std::cout << "  n = " << n << "\n";
-        std::cout << "  m = " << m << "\n";
+        std::cout << "  port = " << port_ << "\n";
+        std::cout << "  k = " << K << "\n";
+        std::cout << "  n = " << N << "\n";
+        std::cout << "  m = " << M << "\n";
         std::cout << "  file = " << file << "\n";
     }
 };
@@ -103,14 +111,14 @@ public:
 
 #ifdef CLIENT
 class ClientArgs : public ProgramArgs {
-public:
+protected:
     std::string player_id;
     std::string server;
-    unsigned port = 0;
     bool force_ipv4 = false;
     bool force_ipv6 = false;
     bool strategy_a = false;
 
+public:
     void parse(int argc, char** argv) override final {
         bool player_id_set = false, server_set = false, port_set = false;
         int ipv4_count = 0, ipv6_count = 0, strategy_a_count = 0;
@@ -174,16 +182,19 @@ public:
 #endif // CLIENT
 
 static std::unique_ptr<ProgramArgs> make_args() {
-#ifdef SERVER
+    #ifdef SERVER
     return std::make_unique<ServerArgs>();
-#endif
-#ifdef CLIENT
+    #endif
+    
+    #ifdef CLIENT
     return std::make_unique<ClientArgs>();
-#endif
+    #endif
+    
     return nullptr;
 }
 
-static std::unique_ptr<ProgramArgs> args;
+std::unique_ptr<ProgramArgs> args;
+bool parsed = false;
 
 } // anonymous namespace
 
@@ -191,23 +202,49 @@ static std::unique_ptr<ProgramArgs> args;
  * @brief Parses command line arguments.
  * @param argc Number of command line arguments.
  * @param argv Array of command line arguments.
- * Should be called before any other function in this namespace.
+ * @note hould be called before any other function in this namespace.
  */
 void parse(int argc, char** argv) {
+    assert(!parsed);
     args = make_args();
     args->parse(argc, argv);
+    parsed = true;
 }
 
 /**
  * @brief Prints the parsed arguments.
- * Should be called after parse() to display the arguments.
+ * @note MUST be called after `parse()`.
  */
 void print() {
-    if (args) {
-        args->print();
-    } else {
-        tga::err::error("No arguments parsed yet.");
-    }
+    assert(parsed);
+    args->print();
+}
+
+#ifdef SERVER {
+namespace server {
+
+/**
+ * @brief returns M value (explained in README).
+ * @note MUST be called after `parse()`.
+ * @return M value.
+ */
+unsigned M() {
+    assert(parsed);
+    return args->M();
+}
+
+} // namespace server
+#endif // SERVER
+
+#ifdef CLIENT
+namespace client {
+
+} // namespace client
+#endif // CLIENT
+
+unsigned port() {
+    assert(parsed);
+    return args->getPort();
 }
 
 } // namespace args

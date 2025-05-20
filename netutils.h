@@ -9,6 +9,7 @@ namespace tga {
 namespace net {
 
 struct sockaddr_in get_server_address(const std::string &host, unsigned port);
+void setup();
 
 } // namespace net
 } // namespace tga

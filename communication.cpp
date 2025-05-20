@@ -1,21 +1,28 @@
 
 
 #include "communication.h"
+#include "utils.h"
 
 namespace tga {
-namespace communication {
+namespace comm {
     
 void send_message() {
 
 }
 
-void receive_message() {
+tga::utils::ReceiveInfo receive_message() {
 
 }
 
-void handle_message() {
+void handle_message(const tga::utils::ReceiveInfo &info) {
 
 }
-    
-} // communication
+
+void end() {
+    // send SCORING messages to clients
+    // close connections
+    // exit
+}
+
+} // comm
 } // tga
