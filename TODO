@@ -1,3 +1,26 @@
+NOTE TODO:
+6. Modus Operandi.
+
+TODO Napisać łączenie się, rozłączanie, itd
+TODO Zobaczyć, czy działa
+
+10. Lista rzeczy, które musimy pamiętać w każdym momencie programu:
+    SERWER:
+    - aktualna linijka w pliku ze współczynnikami (io) DONE
+TODO    - ilość wykonanych już dodawań (<= M)
+    - mapa klient -> klient-info (clients_manager)
+        - klient-info:
+            - aktualny moment komunikacji (między/po/przed jakim komunikatem/komunikatami jesteśmy (klient i serwer)) DONE
+            - aktualne aproksymacje w N punktach DONE
+
+11. Jak zrealizować bezpieczne i wydajne zapisywanie do pliku coeffs przez serwer?
+    ODP: Chyba też trzeba zrobić poll-em, tak jak jest chyba zresztą w jakichś labach.
+
+12. Zmienić nazwę io na jakąś lepszą.
+
+13. W C++ nie trzeba używać słowa kluczowego `struct`.
+
+NOTE Q&A:
 1. C czy C++?
     ODP: C++
 2. Jak czytać parametr -s w programie klienta? (zobaczyć kod z labów)
@@ -14,17 +37,12 @@
     Pierwszy taki problem pojawia się w MessageCombinators.h w
     StateMessage. Pewne jest, że ten StateMessage nie może obliczyć
     czy też odczytać tych wartości, bo to ma być niezależne od tych Message-ów.
-
-6. Modus Operandi.
-
 7. Jak zrealizowac równoległość
     ODP: poll, obczaić laby.
 
-TODO Napisać łączenie się, rozłączanie, itd
-TODO Zobaczyć, czy działa
-
+NOTE DONE:
 8. MOŻNA zrobić te argsy ładniejsze: zamiast dwóch plików .cpp zrobić jeden
     z abstrakcyjną klasą ProgramArgs i dziedzicami Client- i ServerProgramArgs.
     DONE, Ale args.cpp cały czas jest brzydkie i mokre.
-
-9. Walidowacja argumentów w ProgramArgs.
+9. Walidacja argumentów w ProgramArgs.
+    DONE

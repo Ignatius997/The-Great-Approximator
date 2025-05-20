@@ -8,6 +8,7 @@
 
 #include "args.h"
 #include "err.h"
+#include "netutil.h"
 
 namespace tga {
 namespace args {

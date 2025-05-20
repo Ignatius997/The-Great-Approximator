@@ -7,9 +7,13 @@
 namespace tga {
 namespace io {
 
-// FIXME Make `current_line` thread-safe
-static std::string coeffs_file; // File with coefficients
-static size_t current_line = 0; // Line to be read next.
+namespace {
+
+    // FIXME Make `current_line` thread-safe
+std::string coeffs_file; // File with coefficients
+size_t current_line = 0; // Line to be read next.
+
+} // anonymous namespace
 
 // FIXME Należy zadbać o to, żeby nie wykonywano tego jednocześnie przez wiele wątków/procesów.
 // NOTE Not tested
