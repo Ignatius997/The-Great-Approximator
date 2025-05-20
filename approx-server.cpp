@@ -1,7 +1,6 @@
 #include <iostream>
 
 #include "log.h"
-#include "err.h"
 #include "io.h"
 #include "Rational.h"
 #include "log-server.h"

@@ -8,8 +8,8 @@
 #include <cassert>
 
 #include "args.h"
-#include "err.h"
 #include "netutils.h"
+#include "log.h"
 
 namespace tga {
 namespace args {
@@ -54,44 +54,44 @@ public:
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
             if (arg == "-p" && i + 1 < argc) {
-                if (port_set) tga::err::error("Parameter -p specified multiple times");
+                if (port_set) tga::log::err::error("Parameter -p specified multiple times");
                 port_set = true;
                 if (!parse_uint(argv[++i], 0, 65535, port)) {
-                    tga::err::error("Invalid port value");
+                    tga::log::err::error("Invalid port value");
                     std::exit(1);
                 }
             } else if (arg == "-k" && i + 1 < argc) {
-                if (k_set) tga::err::error("Parameter -k specified multiple times");
+                if (k_set) tga::log::err::error("Parameter -k specified multiple times");
                 k_set = true;
                 if (!parse_uint(argv[++i], 1, 10000, K)) {
-                    tga::err::error("Invalid K value");
+                    tga::log::err::error("Invalid K value");
                     std::exit(1);
                 }
             } else if (arg == "-n" && i + 1 < argc) {
-                if (n_set) tga::err::error("Parameter -n specified multiple times");
+                if (n_set) tga::log::err::error("Parameter -n specified multiple times");
                 n_set = true;
                 if (!parse_uint(argv[++i], 1, 8, N)) {
-                    tga::err::error("Invalid N value");
+                    tga::log::err::error("Invalid N value");
                     std::exit(1);
                 }
             } else if (arg == "-m" && i + 1 < argc) {
-                if (m_set) tga::err::error("Parameter -m specified multiple times");
+                if (m_set) tga::log::err::error("Parameter -m specified multiple times");
                 m_set = true;
                 if (!parse_uint(argv[++i], 1, 12341234, M)) {
-                    tga::err::error("Invalid M value");
+                    tga::log::err::error("Invalid M value");
                     std::exit(1);
                 }
             } else if (arg == "-f" && i + 1 < argc) {
-                if (file_set) tga::err::error("Parameter -f specified multiple times");
+                if (file_set) tga::log::err::error("Parameter -f specified multiple times");
                 file_set = true;
                 file = argv[++i];
             } else {
-                tga::err::error("Unknown or incomplete argument: " + arg);
+                tga::log::err::error("Unknown or incomplete argument: " + arg);
                 std::exit(1);
             }
         }
         if (!file_set || file.empty()) {
-            tga::err::error("Missing required parameter: -f file");
+            tga::log::err::error("Missing required parameter: -f file");
             std::exit(1);
         }
     }
@@ -125,25 +125,25 @@ public:
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
             if (arg == "-u" && i + 1 < argc) {
-                if (player_id_set) tga::err::error("Parameter -u specified multiple times");
+                if (player_id_set) tga::log::err::error("Parameter -u specified multiple times");
                 player_id_set = true;
                 player_id = argv[++i];
                 // Walidacja player_id: tylko litery i cyfry
                 for (char c : player_id) {
                     if (!std::isalnum(static_cast<unsigned char>(c))) {
-                        tga::err::error("player_id must be alphanumeric");
+                        tga::log::err::error("player_id must be alphanumeric");
                         std::exit(1);
                     }
                 }
             } else if (arg == "-s" && i + 1 < argc) {
-                if (server_set) tga::err::error("Parameter -s specified multiple times");
+                if (server_set) tga::log::err::error("Parameter -s specified multiple times");
                 server_set = true;
                 server = argv[++i];
             } else if (arg == "-p" && i + 1 < argc) {
-                if (port_set) tga::err::error("Parameter -p specified multiple times");
+                if (port_set) tga::log::err::error("Parameter -p specified multiple times");
                 port_set = true;
                 if (!parse_uint(argv[++i], 1, 65535, port)) {
-                    tga::err::error("Invalid port value");
+                    tga::log::err::error("Invalid port value");
                     std::exit(1);
                 }
             } else if (arg == "-4") {
@@ -156,12 +156,12 @@ public:
                 strategy_a = true;
                 strategy_a_count++;
             } else {
-                tga::err::error("Unknown or incomplete argument: " + arg);
+                tga::log::err::error("Unknown or incomplete argument: " + arg);
                 std::exit(1);
             }
         }
         if (!player_id_set || !server_set || !port_set) {
-            tga::err::error("Missing required parameters: -u <player_id>, -s <server>, -p <port>");
+            tga::log::err::error("Missing required parameters: -u <player_id>, -s <server>, -p <port>");
             std::exit(1);
         }
         if (force_ipv4 && force_ipv6) {

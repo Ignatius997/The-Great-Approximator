@@ -10,9 +10,9 @@
 #include <netinet/in.h>
 
 #include "netutils.h"
-#include "err.h"
 #include "global.h"
 #include "args.h"
+#include "log.h"
 
 namespace tga {
 namespace net {
@@ -33,24 +33,42 @@ size_t active_clients = 0;
 constexpr size_t new_ipv4_clt_idx = 0;
 constexpr size_t new_ipv6_clt_idx = 1;
 
+/**
+ * @brief Extracts the port number from a socket file descriptor for IPv4.
+ * @param sockfd The socket file descriptor.
+ * @return The port number in network byte order.
+ * @note Auxiliary function to `extract_port()`.
+ */
 uint16_t extract_port_ipv4(const int sockfd) {
     sockaddr_in addr{};
     socklen_t length = (socklen_t) sizeof(addr);
     if (getsockname(sockfd, (struct sockaddr *) &addr, &length) < 0) {
-        tga::err::error("getsockname IPv4");
+        tga::log::err::error("getsockname IPv4");
     }
     return addr.sin_port;
 }
 
+/**
+ * @brief Extracts the port number from a socket file descriptor for IPv6.
+ * @param sockfd The socket file descriptor.
+ * @return The port number in network byte order.
+ * @note Auxiliary function to `extract_port()`.
+ */
 uint16_t extract_port_ipv6(const int sockfd) {
     sockaddr_in6 addr{};
     socklen_t length = (socklen_t) sizeof(addr);
     if (getsockname(sockfd, (struct sockaddr *) &addr, &length) < 0) {
-        tga::err::error("getsockname IPv4");
+        tga::log::err::error("getsockname IPv4");
     }
     return addr.sin6_port;
 }
 
+/**
+ * @brief Extracts the port number from a socket file descriptor.
+ * @param sockfd The socket file descriptor.
+ * @param family The address family (AF_INET or AF_INET6).
+ * @return The port number in network byte order.
+ */
 uint16_t extract_port(const int sockfd, const int family) {
     if (family == AF_INET) {
         return extract_port_ipv4(sockfd);
@@ -59,6 +77,11 @@ uint16_t extract_port(const int sockfd, const int family) {
     return extract_port_ipv6(sockfd);
 }
 
+/**
+ * @brief Binds a socket to a port and address.
+ * @param sockfd The socket file descriptor.
+ * @param family The address family (AF_INET or AF_INET6).
+ */
 void _bind(int &sockfd, const int family) {
     sockaddr_in addr4{};
     sockaddr_in6 addr6{};
@@ -84,25 +107,32 @@ void _bind(int &sockfd, const int family) {
 
     if (bind(sockfd, cast_addr, socklen) < 0) {
         std::string fam = family == AF_INET ? "4" : "6";
-        tga::err::error("bind IPv" + fam);
+        tga::log::err::error("bind IPv" + fam);
     }
 }
 
 } // TODO needed? // anonymous namespace
 
 // NOTE Code taken from laboratories.
+
+/**
+ * @brief Sets up a socket for listening.
+ * @param sockfd The socket file descriptor.
+ * @param family The address family (AF_INET or AF_INET6).
+ * @note Code based on the code from laboratories.
+ */
 void setup_socket(int &sockfd, const int family) {
     // Create a socket.
     sockfd = socket(family, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        tga::err::error("cannot create a socket");
+        tga::log::err::error("cannot create a socket");
     }
 
     _bind(sockfd, family);
 
     // Switch the socket to listening.
     if (listen(sockfd, socket_queue_len) < 0) {
-        tga::err::error("listen");
+        tga::log::err::error("listen");
     }
 
     if (ntohs(port) == 0) {
@@ -110,6 +140,10 @@ void setup_socket(int &sockfd, const int family) {
     }
 }
 
+/**
+ * @brief Sets up the server sockets for IPv4 and IPv6.
+ * @note Code based on the code from laboratories.
+ */
 void setup() {
     port = htons(static_cast<uint16_t>(tga::args::port()));
     setup_socket(ipv4_socket_fd, AF_INET);
@@ -142,11 +176,6 @@ void setup() {
 /**
  * @brief Resolves a hostname to an IPv4 sockaddr_in structure for TCP connections.
  *
- * This function uses getaddrinfo to resolve the given host name or IP address
- * to an IPv4 address and fills a sockaddr_in structure with the resolved address
- * and the specified port (in network byte order).
- * @note Function based on function from laboratories.
- *
  * @param host Hostname or IPv4 address as a string.
  * @param port TCP port number (host byte order).
  * @return sockaddr_in structure ready to use for connect() or bind().
@@ -166,7 +195,7 @@ struct sockaddr_in get_server_address(const std::string &host, unsigned port) {
     address_guard.reset(address_result);
 
     if (errcode != 0) {
-        tga::err::error(std::string("getaddrinfo: ") + gai_strerror(errcode));
+        tga::log::err::error(std::string("getaddrinfo: ") + gai_strerror(errcode));
         exit(1);
     }
 
@@ -179,6 +208,9 @@ struct sockaddr_in get_server_address(const std::string &host, unsigned port) {
     return send_address;
 }
 
+/**
+ * @brief Sets up the network for server or client.
+ */
 void setup() {
     #ifdef SERVER
     tga::net::server::setup();

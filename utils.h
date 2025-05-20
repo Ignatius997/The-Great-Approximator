@@ -5,13 +5,17 @@ namespace tga {
 namespace utils {
 
 /**
- * This enum determines in which phase is currently
+ * @brief This enum determines in which phase is currently
  * the communication between client and server.
  */
 enum CommunicationPhase {
     // TODO Implement
 };
 
+/**
+ * @brief This class is used to store information about the
+ * received message.
+ */
 class ReceiveInfo {
 
 };

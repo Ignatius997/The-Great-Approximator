@@ -2,9 +2,8 @@ NOTE TODO:
 6. Modus Operandi.
 
 FIXME HOT QUESTION
-Skoro serwer słucha jednocześnie zarówno na ipv6 jak i na ipv4,
-to jak mam mieć niby na jednym porcie, podanym w argumentach, tego nasłuchiwać.
 
+TODO
 TODO Napisać łączenie się, rozłączanie, itd
 TODO Zobaczyć, czy działa
 
@@ -50,3 +49,8 @@ NOTE DONE:
         - klient-info:
             - aktualny moment komunikacji (między/po/przed jakim komunikatem/komunikatami jesteśmy (klient i serwer)) DONE
             - aktualne aproksymacje w N punktach DONE
+11. Skoro serwer słucha jednocześnie zarówno na ipv6 jak i na ipv4,
+    to jak mam mieć niby na jednym porcie, podanym w argumentach, tego nasłuchiwać.
+     ODP: Okazuje się, że można mieć dwa sockety na jednym porcie.
+        Jednak trzeba się upewnić, że jeden socket nasłuchuje WYŁĄCZNIE na ipv4,
+        a drugi WYŁĄCZNIE na ipv6.

@@ -17,9 +17,6 @@ public:
     Rational(const std::string& value);
 
     Rational operator+(const Rational& other) const;
-    Rational operator-(const Rational& other) const;
-    Rational operator*(const Rational& other) const;
-    Rational operator/(const Rational& other) const;
 
     bool operator==(const Rational& other) const;
     bool operator!=(const Rational& other) const;

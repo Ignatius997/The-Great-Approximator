@@ -14,6 +14,10 @@ namespace msg {
 
 // ==== Establishing Connection Messages ====
 
+/**
+ * @brief Class representing HELLO message sent by the client to the server.
+ * This message contains the player ID.
+ */
 class HelloMessage : public Message {
 private:
     const std::string player_id;
@@ -31,6 +35,10 @@ public:
     explicit HelloMessage(const std::string& id) : player_id(id) {}
 };
 
+/**
+ * @brief Class representing COEFF message sent by the server to the client.
+ * This message contains the coefficients of the polynomial.
+ */
 class CoeffMessage : public Message {
 protected:
     std::string messageType() const override final {
@@ -47,6 +55,10 @@ public:
 
 // ==== Game Messages ====
 
+/**
+ * @brief Class representing STATE message sent by the server to the client.
+ * This message contains the approximation of the function.
+ */
 class StateMessage : public Message {
 private:
     // TODO Is this correct? What if we change this approx?
@@ -76,10 +88,6 @@ public:
     StateMessage(const std::vector<tga::rat::Rational> &approx) : approx(approx) {}
 };
 
-
-// Point Value Messages
-
-// NOTE Przetestować dziedziczenie
 /**
  * @brief Point-Value-Message. Abstract base class for messages that contain a point and a value.
  */
@@ -97,6 +105,10 @@ public:
     PVMessage(int p, tga::rat::Rational v) : point(p), value(v) {}
 };
 
+/**
+ * @brief Class representing PUT message sent by the client to the server.
+ * This message contains the point and the value to be put.
+ */
 class PutMessage : public PVMessage {
 private:
     const int point;
@@ -111,6 +123,10 @@ public:
     using PVMessage::PVMessage; // Inherit constructor
 };
 
+/**
+ * @brief Class representing BAD_PUT message sent by the server to the client.
+ * This message indicates that the PUT message was not accepted.
+ */
 class BadPutMessage : public PVMessage {
 protected:
     std::string messageType() const override final {
@@ -121,6 +137,10 @@ public:
     using PVMessage::PVMessage; // Inherit constructor
 };
 
+/**
+ * @brief Class representing PENALTY message sent by the server to the client.
+ * This message indicates that the client has been penalized.
+ */
 class PenaltyMessage : public PVMessage {
 protected:
     std::string messageType() const override final {
@@ -132,6 +152,10 @@ public:
 
 // ==== Endgame Messages ====
 
+/**
+ * @brief Class representing END message sent by the server to the client.
+ * This message indicates that the game has ended.
+ */
 class ScoringMessage : public Message {
 private:
     const std::map<std::string, tga::rat::Rational> &scores;
