@@ -6,22 +6,23 @@ namespace config {
 
 // Set debug value.
 #if defined(NDEBUG)
-bool constexpr debug = false;
+constexpr bool debug = false;
 #else
-bool constexpr debug = true;
+constexpr bool debug = true;
 #endif
 
-// Set server and client values.
+// Set server value.
+#if defined(TGA_SERVER) && defined(TGA_CLIENT)
+    #error "Both TGA_SERVER and TGA_CLIENT preprocessor macros are defined. Only one should be defined."
+#elif !defined(TGA_SERVER) && !defined(TGA_CLIENT)
+    #error "Neither TGA_SERVER nor TGA_CLIENT preprocessor macro is defined. One must be defined."
+#endif
+
 #if defined(TGA_SERVER) && !defined(TGA_CLIENT)
-bool constexpr server = true;
-bool constexpr client = false;
-#elif defined(TGA_CLIENT) && !defined(TGA_SERVER)
-bool constexpr server = false;
-bool constexpr client = true;
+constexpr bool server = true;
 #else
-    #error "Exactly one of TGA_SERVER or TGA_CLIENT preprocessor macro must be defined."
+constexpr bool server = false;
 #endif
-
 
 } // namespace config
 } // namespace tga

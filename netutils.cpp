@@ -211,7 +211,7 @@ sockaddr_in get_server_address(const std::string &host, unsigned port) {
 void setup() {
     if (tga::config::server) {
         tga::net::server::setup();
-    } else if (tga::config::client) {
+    } else {
         tga::net::client::setup();
     }
 }

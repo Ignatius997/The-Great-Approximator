@@ -182,7 +182,7 @@ public:
 static std::unique_ptr<ProgramArgs> make_args() {
     if (tga::config::server) {
         return std::make_unique<ServerArgs>();
-    } else if (tga::config::client) {
+    } else {
         return std::make_unique<ClientArgs>();
     }
     

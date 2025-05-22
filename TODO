@@ -2,13 +2,15 @@ NOTE TODO:
 6. Modus Operandi. (in progress)
 
 TODO Napisać łączenie się, rozłączanie, itd
-TODO Zobaczyć, czy działa
+    a) setup ...
+
+    z) test ...
 
 11. Jak zrealizować bezpieczne i wydajne zapisywanie do pliku coeffs przez serwer?
     ODP: Chyba też trzeba zrobić poll-em, tak jak jest chyba zresztą w jakichś labach.
     No ale w sumie to program jest jednowątkowy... zbadać!
 
-Q8. W związku z dużą ilością include'ów iostream itd, czy należy robić jakieś deklarowanie obiektu iostream,
+Q8. W związku z dużą ilością include-ów iostream itd, czy należy robić jakieś deklarowanie obiektu iostream,
     tak jak to miało miejsce w jednym z mini-projektów na KPCPP?
 
 NOTE Q&A:
