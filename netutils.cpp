@@ -10,15 +10,13 @@
 #include <netinet/in.h>
 
 #include "netutils.h"
-#include "global.h"
+#include "config.h"
 #include "args.h"
-#include "log.h"
+#include "io.h"
 
 namespace tga {
 namespace net {
 
-// TODO Uncomment `#ifdef`
-// #ifdef SERVER
 namespace server {
 
 namespace {
@@ -43,7 +41,7 @@ uint16_t extract_port_ipv4(const int sockfd) {
     sockaddr_in addr{};
     socklen_t length = (socklen_t) sizeof(addr);
     if (getsockname(sockfd, (struct sockaddr *) &addr, &length) < 0) {
-        tga::log::err::error("getsockname IPv4");
+        tga::io::log::err::error("getsockname IPv4");
     }
     return addr.sin_port;
 }
@@ -58,7 +56,7 @@ uint16_t extract_port_ipv6(const int sockfd) {
     sockaddr_in6 addr{};
     socklen_t length = (socklen_t) sizeof(addr);
     if (getsockname(sockfd, (struct sockaddr *) &addr, &length) < 0) {
-        tga::log::err::error("getsockname IPv4");
+        tga::io::log::err::error("getsockname IPv4");
     }
     return addr.sin6_port;
 }
@@ -107,7 +105,7 @@ void _bind(int &sockfd, const int family) {
 
     if (bind(sockfd, cast_addr, socklen) < 0) {
         std::string fam = family == AF_INET ? "4" : "6";
-        tga::log::err::error("bind IPv" + fam);
+        tga::io::log::err::error("bind IPv" + fam);
     }
 }
 
@@ -125,14 +123,14 @@ void setup_socket(int &sockfd, const int family) {
     // Create a socket.
     sockfd = socket(family, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        tga::log::err::error("cannot create a socket");
+        tga::io::log::err::error("cannot create a socket");
     }
 
     _bind(sockfd, family);
 
     // Switch the socket to listening.
     if (listen(sockfd, socket_queue_len) < 0) {
-        tga::log::err::error("listen");
+        tga::io::log::err::error("listen");
     }
 
     if (ntohs(port) == 0) {
@@ -153,17 +151,17 @@ void setup() {
     poll_descriptors.at(new_ipv4_clt_idx) = (pollfd) {
         .fd = ipv4_socket_fd,
         .events = POLLIN,
+        .revents = 0,
     };
     poll_descriptors.at(new_ipv6_clt_idx) = (pollfd) {
         .fd = ipv6_socket_fd,
         .events = POLLIN,
+        .revents = 0,
     };
 }
 
 } // namespace server
-// #endif // SERVER
 
-#ifdef CLIENT
 namespace client {
 
 void setup() {
@@ -171,7 +169,6 @@ void setup() {
 }
 
 } // namespace client
-#endif // CLIENT
 
 /**
  * @brief Resolves a hostname to an IPv4 sockaddr_in structure for TCP connections.
@@ -182,8 +179,8 @@ void setup() {
  *
  * @throws std::runtime_error if address resolution fails.
  */
-struct sockaddr_in get_server_address(const std::string &host, unsigned port) {
-    struct addrinfo hints;
+sockaddr_in get_server_address(const std::string &host, unsigned port) {
+    addrinfo hints;
     hints.ai_family = AF_INET; // IPv4
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
@@ -195,11 +192,11 @@ struct sockaddr_in get_server_address(const std::string &host, unsigned port) {
     address_guard.reset(address_result);
 
     if (errcode != 0) {
-        tga::log::err::error(std::string("getaddrinfo: ") + gai_strerror(errcode));
+        tga::io::log::err::error(std::string("getaddrinfo: ") + gai_strerror(errcode));
         exit(1);
     }
 
-    struct sockaddr_in send_address;
+    sockaddr_in send_address;
     send_address.sin_family = AF_INET;
     send_address.sin_addr.s_addr =
         reinterpret_cast<sockaddr_in*>(address_result->ai_addr)->sin_addr.s_addr;
@@ -212,13 +209,11 @@ struct sockaddr_in get_server_address(const std::string &host, unsigned port) {
  * @brief Sets up the network for server or client.
  */
 void setup() {
-    #ifdef SERVER
-    tga::net::server::setup();
-    #endif
-
-    #ifdef CLIENT
-    tga::net::client::setup();
-    #endif
+    if (tga::config::server) {
+        tga::net::server::setup();
+    } else if (tga::config::client) {
+        tga::net::client::setup();
+    }
 }
 
 } // namespace net

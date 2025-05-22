@@ -11,11 +11,13 @@ void send_message() {
 }
 
 tga::utils::ReceiveInfo receive_message() {
-
+    return tga::utils::ReceiveInfo{};
+    // TODO Implement this function
 }
 
 void handle_message(const tga::utils::ReceiveInfo &info) {
-
+    (void) info;
+    // TODO Implement this function
 }
 
 void end() {

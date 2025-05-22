@@ -1,19 +1,15 @@
 NOTE TODO:
-6. Modus Operandi.
+6. Modus Operandi. (in progress)
 
-FIXME HOT QUESTION
-
-TODO
 TODO Napisać łączenie się, rozłączanie, itd
 TODO Zobaczyć, czy działa
 
 11. Jak zrealizować bezpieczne i wydajne zapisywanie do pliku coeffs przez serwer?
     ODP: Chyba też trzeba zrobić poll-em, tak jak jest chyba zresztą w jakichś labach.
+    No ale w sumie to program jest jednowątkowy... zbadać!
 
-12. Zmienić nazwę io na jakąś lepszą.
-13. W C++ nie trzeba używać słowa kluczowego `struct`.
-14. Zamienić makra SERVER i CLIENT na TGA_SERVER i TGA_CLIENT
-15. Zmienić nazwę global na coś lepszego, tam przecież nie ma niczego globalnie modyfikowalnego.
+Q8. W związku z dużą ilością include'ów iostream itd, czy należy robić jakieś deklarowanie obiektu iostream,
+    tak jak to miało miejsce w jednym z mini-projektów na KPCPP?
 
 NOTE Q&A:
 1. C czy C++?
@@ -54,3 +50,9 @@ NOTE DONE:
      ODP: Okazuje się, że można mieć dwa sockety na jednym porcie.
         Jednak trzeba się upewnić, że jeden socket nasłuchuje WYŁĄCZNIE na ipv4,
         a drugi WYŁĄCZNIE na ipv6.
+12. Przenieść log wewnątrz io. DONE
+13. W C++ nie trzeba używać słowa kluczowego `struct`. DONE
+14. Zamienić makra SERVER i CLIENT na TGA_SERVER i TGA_CLIENT. DONE
+15. Zmienić nazwę global na coś lepszego, tam przecież nie ma niczego globalnie modyfikowalnego. DONE (global->config)
+16. Nie trzymać dwóch zmiennych ipv4_ i ipv6_ do adresu w client, ale variant lub union. DONE
+17. Nie nadużywać makr preprocesora. DONE

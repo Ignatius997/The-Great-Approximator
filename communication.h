@@ -12,7 +12,7 @@ namespace comm {
 // TODO to determine what to do next.
 void send_message();
 tga::utils::ReceiveInfo receive_message();
-void handle_message(const tga::utils::ReceiveInfo);
+void handle_message(const tga::utils::ReceiveInfo &info);
 void end();
 
 } // comm

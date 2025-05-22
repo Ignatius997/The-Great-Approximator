@@ -32,7 +32,7 @@ void error(const std::string &error_description) {
  */
 void message(const std::string &message_type,
              const std::string &player,
-             const struct sockaddr_in &addr) {
+             const sockaddr_in &addr) {
     char ip_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(addr.sin_addr), ip_str, INET_ADDRSTRLEN);
     uint16_t port = ntohs(addr.sin_port);

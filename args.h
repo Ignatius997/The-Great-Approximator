@@ -11,19 +11,12 @@ namespace args {
 void parse(int argc, char** argv);
 void print();
 
-#ifdef SERVER
 namespace server {
-
-unsigned M();
-
-} // namespace server
-#endif // SERVER
-
-#ifdef CLIENT
+    unsigned M();
+}
 namespace client {
     
 }
-#endif // CLIENT
 
 unsigned port();
 
