@@ -1,6 +1,8 @@
 #ifndef TGA_COMMUNICATION_H
 #define TGA_COMMUNICATION_H
 
+#include <variant>
+
 #include "utils.h"
 #include "Message.h"
 
@@ -8,16 +10,18 @@ namespace tga {
 namespace comm {
 
 using tga::msg::Message;
+using SockAddrVariant = std::variant<sockaddr_in, sockaddr_in6>;
 
 namespace server {
-
-} // namespace server
+    void clear_revents();
+    int poll_events();
+}
 
 namespace client {
+    int get_sockfd();
+}
 
-} // namespace client
-
-// TODO Create some return type for send and/or receive and/or handle functions to determine what to do next.
+void setup();
 void send_message(int fd, const Message &msg);
 tga::utils::ReceiveInfo receive_message();
 void handle_message(const tga::utils::ReceiveInfo &info);

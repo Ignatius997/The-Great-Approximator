@@ -1,10 +1,13 @@
 NOTE TODO:
 6. Modus Operandi. (in progress)
 
+Przenieść część net do communication, a mianowicie wszystko globalne do communication, a czesc prywatnych zrobic globalnych. DONE
+TODO Zaimplementować tga::comm::server::receive_message
+
 TODO Napisać łączenie się, rozłączanie, itd
-NOTE Pamiętać o trybie nieblokującym (tylko w serwerze)
+NOTE Pamiętać o trybie nieblokującym (tylko w serwerze) i timeoutach (w serwerze).
     a) setup server-DONE client-DONE
-    b) zgloszenie się klienta, czyli wyslanie HELLO ...
+    b) zgloszenie się klienta, czyli wyslanie HELLO DONE
     c) przyjęcie nowego klienta, czyli obsłużenie HELLO ...
     d) obsługa sygnałów dla debugowania, ażeby przetestować sprzątanie
 
@@ -17,6 +20,7 @@ TODO Operatory porównania w netutils dla sockaddr_in i sockaddr_in6 są dość 
     No ale w sumie to program jest jednowątkowy... zbadać!
 
 18. Zamień te gettery typu `requests_handled` na `get_requests_handled`.
+19. Czy na pewno zrobiono walidację argumentów w ProgramArgs?
 
 Q8. W związku z dużą ilością include-ów iostream itd, czy należy robić jakieś deklarowanie obiektu iostream,
     tak jak to miało miejsce w jednym z mini-projektów na KPCPP?

@@ -34,13 +34,8 @@ inline bool operator<(const sockaddr_in6& a, const sockaddr_in6& b) {
 namespace tga {
 namespace net {
 
-namespace client {
-    int get_sockfd();
-}
-
-using SockAddrVariant = std::variant<sockaddr_in, sockaddr_in6>;
-
-void setup();
+void _bind(int &sockfd, uint16_t port, const int family);
+uint16_t extract_port(const int sockfd, const int family);
 
 } // namespace net
 } // namespace tga

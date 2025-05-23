@@ -11,8 +11,9 @@
 #include "clients-manager.h"
 #include "utils.h"
 #include "netutils.h"
+#include "communication.h"
 
-using tga::net::SockAddrVariant;
+using tga::comm::SockAddrVariant;
 using tga::utils::CommunicationPhase;
 
 namespace tga {

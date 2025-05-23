@@ -110,10 +110,6 @@ public:
  * This message contains the point and the value to be put.
  */
 class PutMessage : public PVMessage {
-private:
-    const int point;
-    const tga::rat::Rational value;
-
 protected:
     std::string messageType() const override final {
         return "PUT";
