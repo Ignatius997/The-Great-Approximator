@@ -6,8 +6,11 @@
 namespace tga {
 namespace comm {
     
-void send_message() {
+using tga::msg::Message;
 
+void send_message(int fd, const Message &msg) {
+    std::string serialized_message = msg.serialize();
+    // write(fd, serialized_message.c_str(), serialized_message.size());
 }
 
 tga::utils::ReceiveInfo receive_message() {

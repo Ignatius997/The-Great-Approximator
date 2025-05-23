@@ -2,15 +2,23 @@
 #define TGA_COMMUNICATION_H
 
 #include "utils.h"
+#include "Message.h"
 
 namespace tga {
 namespace comm {
 
-// NOTE Implementations of those functions may vary depending on preprocessor `SERVER` and `CLIENT` macros.
+using tga::msg::Message;
 
-// TODO Create some return type for send and/or receive and/or handle functions
-// TODO to determine what to do next.
-void send_message();
+namespace server {
+
+} // namespace server
+
+namespace client {
+
+} // namespace client
+
+// TODO Create some return type for send and/or receive and/or handle functions to determine what to do next.
+void send_message(int fd, const Message &msg);
 tga::utils::ReceiveInfo receive_message();
 void handle_message(const tga::utils::ReceiveInfo &info);
 void end();

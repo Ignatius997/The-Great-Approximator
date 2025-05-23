@@ -98,7 +98,6 @@ public:
     }
 
     unsigned getM() { return M; }
-
     void print() const override final {
         std::cout << "ServerArgs:\n";
         std::cout << "  port = " << port << "\n";
@@ -168,6 +167,21 @@ public:
         }
     }
 
+    std::string getServer() { return server; }
+
+    /**
+     * @brief Returns the address family based on the command line arguments.
+     * @return AF_INET for IPv4, AF_INET6 for IPv6, or AF_UNSPEC if neither is specified.
+     * @note This function is used to determine the address family for socket creation.
+     */
+    int getFamily() {
+        if (force_ipv4) return AF_INET;
+        if (force_ipv6) return AF_INET6;
+        return AF_UNSPEC;
+    }
+
+    std::string getPlayerId() { return player_id; }
+
     void print() const override final {
         std::cout << "ClientArgs:\n";
         std::cout << "  player_id = " << player_id << "\n";
@@ -231,6 +245,36 @@ unsigned M() {
 } // namespace server
 
 namespace client {
+
+/**
+ * @brief returns server address.
+ * @note MUST be called after `parse()`.
+ * @return server address.
+ */
+std::string server() {
+    assert(parsed);
+    return static_cast<ClientArgs*>(args.get())->getServer();
+}
+
+/**
+ * @brief returns player_id.
+ * @note MUST be called after `parse()`.
+ * @return player_id.
+ */
+std::string player_id() {
+    assert(parsed);
+    return static_cast<ClientArgs*>(args.get())->getPlayerId();
+}
+
+/**
+ * @brief returns address family.
+ * @note MUST be called after `parse()`.
+ * @return address family.
+ */
+int family() {
+    assert(parsed);
+    return static_cast<ClientArgs*>(args.get())->getFamily();
+}
 
 } // namespace client
 

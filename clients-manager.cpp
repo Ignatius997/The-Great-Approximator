@@ -6,12 +6,13 @@
 #include <map>
 #include <string>
 #include <netinet/in.h>
-#include <variant>
 #include <cstring>
 
 #include "clients-manager.h"
 #include "utils.h"
+#include "netutils.h"
 
+using tga::net::SockAddrVariant;
 using tga::utils::CommunicationPhase;
 
 namespace tga {
@@ -25,18 +26,11 @@ namespace {
  */
 class Client {
 private:
-    enum AddrVariantIndex {
-        IDX_NONE = 0,
-        IDX_IPV4 = 1,
-        IDX_IPV6 = 2
-    };
-
-    std::string id; // Client identificator.
-    std::variant<std::monostate, sockaddr_in, sockaddr_in6> addr; // Address of the client.
+    const std::string id; // Client identificator.
+    const SockAddrVariant addr; // Address of the client.
 
 public:
     // Constructors
-    Client() : addr(std::monostate{}) {}
     Client(const std::string& id, const sockaddr_in& addr)
         : id(id), addr(addr) {}
     Client(const std::string& id, const sockaddr_in6& addr)
@@ -51,21 +45,7 @@ public:
      */
     bool operator==(const Client& other) const {
         if (id != other.id) return false;
-        if (addr.index() != other.addr.index()) return false;
-        if (addr.index() == IDX_IPV4) {
-            const sockaddr_in& ipv4_addr = std::get<sockaddr_in>(addr);
-            const sockaddr_in& other_ipv4_addr = std::get<sockaddr_in>(other.addr);
-            return ipv4_addr.sin_addr.s_addr == other_ipv4_addr.sin_addr.s_addr;
-        } else if (addr.index() == IDX_IPV6) {
-            const sockaddr_in6& ipv6_addr = std::get<sockaddr_in6>(addr);
-            const sockaddr_in6& other_ipv6_addr = std::get<sockaddr_in6>(other.addr);
-            return std::memcmp(ipv6_addr.sin6_addr.s6_addr,
-                               other_ipv6_addr.sin6_addr.s6_addr,
-                               sizeof(ipv6_addr.sin6_addr.s6_addr)
-                            ) == 0;
-        }
-
-        return true; // Family not set in both, thus equal.
+        return addr == other.addr;
     }
 
     /**
@@ -77,25 +57,7 @@ public:
      */
     bool operator<(const Client& other) const {
         if (id != other.id) return id < other.id;
-        
-        // Those does not matter, but we need to differentiate them in std::map.
-        if (addr.index() != other.addr.index()) {
-            return addr.index() < other.addr.index(); // IPv4 < IPv6.
-        } else if (addr.index() == IDX_IPV4) {
-            const sockaddr_in& ipv4_addr = std::get<sockaddr_in>(addr);
-            const sockaddr_in& other_ipv4_addr = std::get<sockaddr_in>(other.addr);
-            return ipv4_addr.sin_addr.s_addr < other_ipv4_addr.sin_addr.s_addr;
-        } else if (addr.index() == IDX_IPV6) {
-            const sockaddr_in6& ipv6_addr = std::get<sockaddr_in6>(addr);
-            const sockaddr_in6& other_ipv6_addr = std::get<sockaddr_in6>(other.addr);
-            return std::memcmp(ipv6_addr.sin6_addr.s6_addr,
-                               other_ipv6_addr.sin6_addr.s6_addr,
-                               sizeof(ipv6_addr.sin6_addr.s6_addr)
-                            ) < 0;
-        } else {
-            return false; // This case should not happen, since there should not exist
-                          // two clients with the same ID and undefined family.
-        }
+        return addr < other.addr;
     }
 };
 

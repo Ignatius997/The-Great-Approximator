@@ -15,7 +15,9 @@ namespace server {
     unsigned M();
 }
 namespace client {
-    
+    std::string server();
+    std::string player_id();
+    int family();
 }
 
 unsigned port();

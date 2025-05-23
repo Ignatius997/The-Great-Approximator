@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "io.h"
+#include "config.h"
 
 namespace tga {
 namespace io {
@@ -24,6 +25,7 @@ namespace err {
  */
 void error(const std::string &error_description) {
     std::cerr << "ERROR: " << error_description << std::endl;
+    if (tga::config::debug) exit(1);
 }
 
 /**
@@ -140,7 +142,7 @@ namespace client {
  * @brief Print a message when the client is connected to the server.
  * 
  * @param ip The IP address of the server.
- * @param port The port number of the server.
+ * @param port The port number of the server (host byte order).
  */
 void connected_to(const std::string& ip, uint16_t port) {
     std::cout << "Connected to [" << ip << "]:" << port << "." << std::endl;

@@ -2,36 +2,48 @@ NOTE TODO:
 6. Modus Operandi. (in progress)
 
 TODO Napisać łączenie się, rozłączanie, itd
-    a) setup ...
+NOTE Pamiętać o trybie nieblokującym (tylko w serwerze)
+    a) setup server-DONE client-DONE
+    b) zgloszenie się klienta, czyli wyslanie HELLO ...
+    c) przyjęcie nowego klienta, czyli obsłużenie HELLO ...
+    d) obsługa sygnałów dla debugowania, ażeby przetestować sprzątanie
 
     z) test ...
+
+TODO Operatory porównania w netutils dla sockaddr_in i sockaddr_in6 są dość kontrowersyjne, bo porównują rodzinę (która chyba powinna być taka sama)
 
 11. Jak zrealizować bezpieczne i wydajne zapisywanie do pliku coeffs przez serwer?
     ODP: Chyba też trzeba zrobić poll-em, tak jak jest chyba zresztą w jakichś labach.
     No ale w sumie to program jest jednowątkowy... zbadać!
 
+18. Zamień te gettery typu `requests_handled` na `get_requests_handled`.
+
 Q8. W związku z dużą ilością include-ów iostream itd, czy należy robić jakieś deklarowanie obiektu iostream,
     tak jak to miało miejsce w jednym z mini-projektów na KPCPP?
 
 NOTE Q&A:
-1. C czy C++?
+Q1. C czy C++?
     ODP: C++
-2. Jak czytać parametr -s w programie klienta? (zobaczyć kod z labów)
-3. Jak przechowywać i przesyłać liczby wymierne? Ciąg znaków czy float?
+Q2. Jak czytać parametr -s w programie klienta? (zobaczyć kod z labów)
+Q3. Jak przechowywać i przesyłać liczby wymierne? Ciąg znaków czy float?
     ODP: Ciąg znaków, nawet liczby całkowite.
-4. Jak implementować komunikaty?
+Q4. Jak implementować komunikaty?
     ODP: Klasy, a konkretnie klasa-korzeń zawierająca prywatny atrybut
         - `private std::string name`
         - `protected/private virtual std::string actual_content() const`
         - `public std::string serialize() const {
             return name + actual_content() + '\r\n';
         }`
-5. Jak urządzić się z aproksymacjami, gdzie je przechowywać?
+Q5. Jak urządzić się z aproksymacjami, gdzie je przechowywać?
     Pierwszy taki problem pojawia się w MessageCombinators.h w
     StateMessage. Pewne jest, że ten StateMessage nie może obliczyć
     czy też odczytać tych wartości, bo to ma być niezależne od tych Message-ów.
-7. Jak zrealizowac równoległość
+Q7. Jak zrealizowac równoległość
     ODP: poll, obczaić laby.
+Q9. Czy dwa klienty o tym samym adresie, lecz innym porcie mogą się połączyć z serwerem?
+    ODP: Tak.
+Q10. Czy trzeba jakoś chronić plik `coeffs`?
+    ODP: Nie, bo plik nie jest modyfikowany w trakcie działania serwera.
 
 NOTE DONE:
 8. MOŻNA zrobić te argsy ładniejsze: zamiast dwóch plików .cpp zrobić jeden
