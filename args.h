@@ -13,6 +13,8 @@ void print();
 
 namespace server {
     unsigned M();
+    unsigned N();
+    unsigned K();
 }
 namespace client {
     std::string server();

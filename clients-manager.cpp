@@ -11,9 +11,8 @@
 #include "clients-manager.h"
 #include "utils.h"
 #include "netutils.h"
-#include "communication.h"
 
-using tga::comm::SockAddrVariant;
+using tga::net::SockAddrVariant;
 using tga::utils::CommunicationPhase;
 
 namespace tga {
@@ -32,6 +31,8 @@ private:
 
 public:
     // Constructors
+    Client(const std::string &id, const SockAddrVariant &addr)
+        : id(id), addr(addr) {}
     Client(const std::string& id, const sockaddr_in& addr)
         : id(id), addr(addr) {}
     Client(const std::string& id, const sockaddr_in6& addr)
@@ -92,6 +93,22 @@ unsigned requests_handled_count = 0;
  * @return The number of correct client requests handled.
  */
 unsigned requests_handled() { return requests_handled_count; }
+
+void register_client(const std::string &id, const SockAddrVariant &addr) {
+    auto it = clients.find(Client(id, addr));
+    if (it == clients.end()) {
+        clients.emplace(Client(id, addr), ClientInfo());
+    } else {
+        // TODO Client already registered, what to do?
+    }
+}
+
+void deregister_client(const std::string &id, const SockAddrVariant &addr) {
+    auto it = clients.find(Client(id, addr));
+    if (it != clients.end()) {
+        clients.erase(it);
+    }
+}
 
 } // namespace cltman
 } // namespace tga

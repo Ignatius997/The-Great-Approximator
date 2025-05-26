@@ -12,12 +12,15 @@ enum CommunicationPhase {
     // TODO Implement
 };
 
+// FIXME To powinno być raczej w netutils.h
 /**
  * @brief This class is used to store information about the
  * received message.
  */
 class ReceiveInfo {
-
+public:
+    std::string msg_type; // Message type, e.g., "HELLO", "COEFF", etc.
+    int err = 0; // Error code, 0 if no error occurred.
 };
 
 } // namespace utils

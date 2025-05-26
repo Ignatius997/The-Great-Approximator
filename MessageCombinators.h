@@ -4,13 +4,21 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <memory>
+#include <utility>
+#include <optional>
 
 #include "Message.h"
 #include "io.h"
 #include "Rational.h"
+#include "utils.h"
 
 namespace tga {
 namespace msg {
+
+using tga::utils::ReceiveInfo;
+using tga::rat::Rational;
+using MsgPtr = std::unique_ptr<Message>;
 
 // ==== Establishing Connection Messages ====
 
@@ -33,6 +41,7 @@ protected:
 
 public:
     explicit HelloMessage(const std::string& id) : player_id(id) {}
+    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
 };
 
 /**
@@ -40,6 +49,10 @@ public:
  * This message contains the coefficients of the polynomial.
  */
 class CoeffMessage : public Message {
+private:
+    /** Coefficients of the polynomial. coeffs.size() == N + 1. */
+    const std::vector<Rational> coeffs;
+
 protected:
     std::string messageType() const override final {
         return "COEFF";
@@ -50,7 +63,8 @@ protected:
     }
 
 public:
-    CoeffMessage() = default;
+    CoeffMessage(std::vector<Rational> coeffs) : Message(), coeffs(std::move(coeffs)) {}
+    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
 };
 
 // ==== Game Messages ====
@@ -63,7 +77,7 @@ class StateMessage : public Message {
 private:
     // TODO Is this correct? What if we change this approx?
     // NOTE Change K to the actual size of the approximation
-    const std::vector<tga::rat::Rational> &approx; // Approximation of the function. approx.size() == K.
+    const std::vector<Rational> &approx; // Approximation of the function. approx.size() == K.
 
 protected:
     std::string messageType() const override final {
@@ -85,7 +99,8 @@ protected:
     }
 
 public:
-    StateMessage(const std::vector<tga::rat::Rational> &approx) : approx(approx) {}
+    StateMessage(const std::vector<Rational> &approx) : approx(approx) {}
+    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
 };
 
 /**
@@ -93,8 +108,8 @@ public:
  */
 class PVMessage : public Message {
 private:
-    const int point;
-    const tga::rat::Rational value;
+    const size_t point;
+    const Rational value;
 
 protected:
     std::string messageContent() const override final {
@@ -102,7 +117,10 @@ protected:
     }
 
 public:
-    PVMessage(int p, tga::rat::Rational v) : point(p), value(v) {}
+    PVMessage(size_t p, Rational v) : point(p), value(std::move(v)) {}
+    static std::optional<std::pair<size_t, Rational>> deserialize_helper(
+                                                    const std::string& msg_body,
+                                                    ReceiveInfo& rinfo);
 };
 
 /**
@@ -117,6 +135,7 @@ protected:
 
 public:
     using PVMessage::PVMessage; // Inherit constructor
+    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo& rinfo);
 };
 
 /**
@@ -131,6 +150,7 @@ protected:
     
 public:
     using PVMessage::PVMessage; // Inherit constructor
+    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo& rinfo);
 };
 
 /**
@@ -144,6 +164,7 @@ protected:
     }
 public:
     using PVMessage::PVMessage; // Inherit constructor
+    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
 };
 
 // ==== Endgame Messages ====
@@ -154,7 +175,7 @@ public:
  */
 class ScoringMessage : public Message {
 private:
-    const std::map<std::string, tga::rat::Rational> &scores;
+    const std::map<std::string, Rational> &scores;
 
 protected:
     std::string messageType() const override final {
@@ -177,8 +198,11 @@ protected:
     }
 
 public:
-    ScoringMessage(const std::map<std::string, tga::rat::Rational> &scores) : scores(scores) {}
+    ScoringMessage(std::map<std::string, Rational> scores) : scores(std::move(scores)) {}
+    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
 };
+
+MsgPtr deserialize_message(const char *buffer, const size_t len_received, ReceiveInfo &rinfo);
 
 } // namespace msg
 } // namespace tga

@@ -2,13 +2,12 @@
 #include <fstream>
 #include <iostream>
 #include <cassert>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <vector>
 #include <utility>
 
 #include "io.h"
 #include "config.h"
+#include "netutils.h"
 
 namespace tga {
 namespace io {
@@ -38,12 +37,10 @@ void error(const std::string &error_description) {
  */
 void message(const std::string &message_type,
              const std::string &player,
-             const sockaddr_in &addr) {
-    char ip_str[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &(addr.sin_addr), ip_str, INET_ADDRSTRLEN);
-    uint16_t port = ntohs(addr.sin_port);
-
-    std::cerr << "ERROR: bad message from [" << ip_str << "]:" << port
+             const SockAddrVariant &addr) {
+    auto ip = tga::net::get_ip(addr);
+    auto port = tga::net::get_port(addr);
+    std::cerr << "ERROR: bad message from [" << ip << "]:" << port
               << ", " << player << ": " << message_type << std::endl;
 }
 

@@ -8,20 +8,30 @@ namespace rat {
 
 class Rational {
 private:
-    std::string num; // (-)xxx.xxxxxxx, max 7 digits after dot. Dot is optional.
+    /**
+     * (-)xxx.xxxxxxx, max 7 digits after dot.
+     * Dot is optional, as well as digits after dot.
+     */
+    std::string num;
 
     static std::string addition(const std::string& a, const std::string& b);
 
 public:
-    Rational();
-    Rational(const std::string& value);
+    Rational() : num("0") {} // Default constructor initializes to 0
+
+    /**
+     * @brief Constructs a Rational object from a string.
+     * @note Constructor assumes that the input string is correctly formatted.
+     */
+    Rational(const std::string& value) : num(value) {}
 
     Rational operator+(const Rational& other) const;
 
     bool operator==(const Rational& other) const;
     bool operator!=(const Rational& other) const;
 
-    explicit operator std::string() const;
+    explicit operator std::string() const { return num; }
+    explicit operator double() const { return std::stod(num); }
 };
 
 } // namespace rat

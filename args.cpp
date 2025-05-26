@@ -98,6 +98,9 @@ public:
     }
 
     unsigned getM() { return M; }
+    unsigned getN() { return N; }
+    unsigned getK() { return K; }
+
     void print() const override final {
         std::cout << "ServerArgs:\n";
         std::cout << "  port = " << port << "\n";
@@ -240,6 +243,16 @@ namespace server {
 unsigned M() {
     assert(parsed);
     return static_cast<ServerArgs*>(args.get())->getM();
+}
+
+unsigned N() {
+    assert(parsed);
+    return static_cast<ServerArgs*>(args.get())->getN();
+}
+
+unsigned K() {
+    assert(parsed);
+    return static_cast<ServerArgs*>(args.get())->getK();
 }
 
 } // namespace server

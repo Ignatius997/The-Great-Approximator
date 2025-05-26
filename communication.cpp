@@ -7,31 +7,114 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <cassert>
+#include <queue>
+#include <map>
+#include <utility>
 
 #include "communication.h"
 #include "utils.h"
 #include "config.h"
 #include "io.h"
 #include "Message.h"
+#include "MessageCombinators.h"
 #include "netutils.h"
 #include "args.h"
+#include "clients-manager.h"
 
 namespace tga {
 namespace comm {
 
 using tga::msg::Message;
 using tga::utils::ReceiveInfo;
+using tga::net::SockAddrVariant;
+using tga::msg::Message;
 
 namespace server {
 
 namespace {
 
-constexpr int socket_queue_len = 10; // FIXME Ulepszyć to
+const std::string empty_string = ""; // Empty string for client ID.
+
+constexpr size_t buffer_size = (1 << 13); // 8 KiB
+std::vector<std::vector<char>> buffers; // Buffers for receiving messages from clients.
+
+constexpr int socket_queue_len = 10; // FIXME Ulepszyć to?
 uint16_t port; // Stored in host byte order.
 int ipv4_socket_fd = -1;
 int ipv6_socket_fd = -1;
+
+/**
+ * @brief Poll descriptors for the server.
+ * @note If a socket is closed, its fd is set to -1.
+ */
 std::vector<pollfd> poll_descriptors;
-size_t active_clients = 0;
+std::queue<size_t> free_poll_indices; // Indexes of free poll descriptors.
+
+class ClientConnection {
+protected:
+    std::string client_id = empty_string; // Client ID, set after HELLO message, empty in default.
+    SockAddrVariant addr; // Address of the client.
+
+    char buffer[buffer_size] = {0}; // Buffer for receiving and sending messages from the client.
+    size_t buffer_len = 0; // Length of the buffer, i.e., how many valid bytes are currently in the buffer.
+    size_t buffer_pos = 0; // Position in the buffer, i.e., how many bytes were already written to the buffer.
+
+    bool baptised_ = false; // Whether the client has been baptised (i.e., has a name).
+
+public:
+    ClientConnection(const SockAddrVariant &addr) : addr(addr) {}
+
+    /**
+     * @brief Get the client ID.
+     * @return The client ID as a string.
+     */
+    std::string get_client_id() const {
+        assert(baptised_);
+        return client_id;
+    }
+
+    /**
+     * @brief Get the address of the client.
+     * @return The address of the client as a SockAddrVariant.
+     */
+    SockAddrVariant get_addr() const {
+        return addr;
+    }
+
+    /**
+     * @brief Give name to the already connected, but unnamed client.
+     */
+    void baptise(const std::string &name) {
+        assert(!baptised_);
+        client_id = name;
+        baptised_ = true;
+    }
+
+    /**
+     * @brief Returns whether the client has been baptised.
+     * @return true if the client has a name, false otherwise.
+     */
+    [[nodiscard]]
+    bool baptised() const {
+        return baptised_;
+    }
+
+    /**
+     * @brief Returns pointer to the client's buffer.
+     * @return pointer to the client's buffer.
+     */
+    char *get_buffer() {
+        return buffer;
+    }
+};
+
+/**
+ * @brief Map of client indexes in `poll_descriptors` to their connection data.
+ * The key is the index of the poll descriptor, and the value is a ClientConnection object.
+ */
+std::map<size_t, ClientConnection> connections;
+// NOTE Number of active clients can be extracted by `connections.size()`.
 
 /** Indexes of sockets awaiting for new clients. */
 constexpr size_t new_ipv4_clt_idx = 0;
@@ -55,7 +138,10 @@ void setup_socket(int &sockfd, const int family) {
         exit(1);
     }
 
-    tga::net::_bind(sockfd, port, family);
+    if (tga::net::_bind(sockfd, htons(port), family) == 1) {
+        tga::io::log::err::error("bind IPv" + family);
+        exit(1);
+    }
 
     // Set socket to nonblocking mode.
     if (fcntl(sockfd, F_SETFL, O_NONBLOCK)) {
@@ -71,6 +157,10 @@ void setup_socket(int &sockfd, const int family) {
 
     if (port == 0) { // Port was not given arbitrarily in program arguments.
         port = tga::net::extract_port(sockfd, family);
+        if (port == 0) {
+            tga::io::log::err::error("getsockname");
+            exit(1);
+        }
     }
 }
 
@@ -87,16 +177,16 @@ void setup() {
 
     // Configure two first descriptors to await for new connections.
     poll_descriptors.reserve(2);
-    poll_descriptors.at(new_ipv4_clt_idx) = (pollfd) {
+    poll_descriptors.push_back( (pollfd) {
         .fd = ipv4_socket_fd,
         .events = POLLIN,
         .revents = 0,
-    };
-    poll_descriptors.at(new_ipv6_clt_idx) = (pollfd) {
+    });
+    poll_descriptors.push_back( (pollfd) {
         .fd = ipv6_socket_fd,
         .events = POLLIN,
         .revents = 0,
-    };
+    });
 }
 
 /**
@@ -111,38 +201,243 @@ void clear_revents() {
     }
 }
 
-/**
- * @brief Polls the sockets for events.
- * 
- * This function waits for events on the sockets and returns the number of
- * events that occurred. It also handles the case when a socket is closed.
- * 
- * @return The number of events that occurred.
- */
-int poll_events() {
-    int poll_status = poll(poll_descriptors.data(), (nfds_t) poll_descriptors.size(), -1);
-    if (poll_status < 0) {
-        tga::io::log::err::error("poll");
-        exit(1);
+void register_new_client(const int client_fd, const SockAddrVariant &client_addr) {
+    size_t idx;
+
+    if (free_poll_indices.empty()) {
+        pollfd new_client_desc = {
+            .fd = client_fd,
+            .events = POLLIN,
+            .revents = 0,
+        };
+        poll_descriptors.push_back(new_client_desc);
+        idx = poll_descriptors.size() - 1;
+    } else {
+        idx = free_poll_indices.front();
+        free_poll_indices.pop();
+        poll_descriptors.at(idx) = (pollfd) {
+            .fd = client_fd,
+            .events = POLLIN,
+            .revents = 0,
+        };
     }
 
-    for (size_t i = 0; i < poll_descriptors.size(); ++i) {
-        if (poll_descriptors.at(i).revents & POLLHUP) {
-            close(poll_descriptors.at(i).fd);
-            poll_descriptors.erase(poll_descriptors.begin() + i);
-            --i;
-        }
-    }
+    tga::io::log::info::server::new_client(
+            tga::net::get_ip(client_addr),
+            tga::net::get_port(client_addr));
 
-    return poll_status;
+    // Register only the address of the client.
+    // The client shall be outrightly registered only after HELLO message.
+    connections.at(idx) = ClientConnection(client_addr);
 }
 
-ReceiveInfo receive_message() {
-    tga::comm::server::clear_revents(); // NOTE This may be optimized.
-    // TODO Maybe handle Ctrl-C like in echo-server-nonblocking.c
-    int poll_status = tga::comm::server::poll_events();
+/**
+ * @brief Accepts new clients on the given socket.
+ * 
+ * This function accepts new clients on the given socket and registers them
+ * for further communication. It handles both IPv4 and IPv6 addresses.
+ * 
+ * @param family The address family (AF_INET or AF_INET6).
+ * @param client_addr The address of the client.
+ * @return The file descriptor of the accepted client.
+ * @note This function is used internally by the server to accept new clients.
+ * @note The function returns -1 if no more clients can be accepted.
+ */
+int accept_new_client(const int family, SockAddrVariant &client_addr) {
+    assert(family == AF_INET || family == AF_INET6);
 
-    return ReceiveInfo{};
+    int sockfd;
+    sockaddr *addr;
+    socklen_t addr_len{};
+    
+    if (family == AF_INET) {
+        sockfd = ipv4_socket_fd;
+        addr = (sockaddr *) (&std::get<sockaddr_in>(client_addr));
+        addr_len = (socklen_t) sizeof(sockaddr_in);
+    } else {
+        sockfd = ipv6_socket_fd;
+        addr = (sockaddr *) (&std::get<sockaddr_in6>(client_addr));
+        addr_len = (socklen_t) sizeof(sockaddr_in6);
+    }
+
+    int client_fd = accept(sockfd, addr, &addr_len);
+    if (client_fd < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) { // No more clients to accept
+            client_fd = -1;
+        } else {
+            tga::io::log::err::error("accept");
+            exit(1);
+        }
+    }
+    
+    return client_fd;
+}
+
+/**
+ * @brief Accepts new clients of given family.
+ * 
+ * This function accepts new clients on the given socket and registers them
+ * for further communication. It handles both IPv4 and IPv6 addresses.
+ * 
+ * @param family The address family (AF_INET or AF_INET6).
+ */
+void new_clients(int family) {
+    assert(family == AF_INET || family == AF_INET6);
+
+    while (true) {
+        SockAddrVariant client_addr{};
+        
+        int client_fd = accept_new_client(family, client_addr);
+        if (client_fd < 0) break; // No more clients to accept
+        
+        // Set the client socket to non-blocking mode.
+        if (fcntl(client_fd, F_SETFL, O_NONBLOCK)) {
+            tga::io::log::err::error("fcntl");
+            exit(1);
+        }
+
+        register_new_client(client_fd, client_addr);
+    }
+}
+
+void close_client_connection(const int idx) {
+    if (tga::config::debug) tga::io::log::err::error("closing connection");
+    
+    auto it = connections.find(idx);
+    if (it != connections.end()) {
+        ClientConnection &conn = it->second;
+        tga::cltman::deregister_client(conn.get_client_id(), conn.get_addr());
+        connections.erase(it);
+    }
+    
+    close(poll_descriptors.at(idx).fd);
+    
+    poll_descriptors.at(idx).fd = -1;
+    free_poll_indices.push(idx);
+}
+
+void handle_message(const size_t idx, const size_t len_received, ReceiveInfo &rinfo) {
+    (void) rinfo; // FIXME To suppress unused variable warning.
+    assert(len_received > 0);
+
+    const char *buffer = connections.at(idx).get_buffer();
+    auto msg = tga::msg::deserialize_message(buffer, len_received, rinfo);
+    
+    if (msg == nullptr) { // Invalid message
+        tga::io::log::err::error("invalid message received from client");
+        return;
+    } else if (rinfo.err != 0) { // Error during deserialization
+        const ClientConnection &conn = connections.at(idx);
+        std::string player_id = conn.baptised() ? conn.get_client_id() : empty_string;
+        auto ip = connections.at(idx).get_addr();
+        tga::io::log::err::message(rinfo.msg_type, player_id, ip);
+        return;
+    } else {
+
+    }
+}
+
+/**
+ * @brief Reads a message from the client.
+ * 
+ * This function reads a message from the client and returns the length of
+ * the received message. If an error occurs, it closes the client connection.
+ * 
+ * @param idx The index of the client in the poll descriptors.
+ * @return The length of the received message, or -1 on error.
+ * 
+ * @note This function not only calls `read` function, but also handles
+ *       `read` error and the end of the connection (EOF).
+ *       However, it leaves handling received message to the caller.
+ */
+ssize_t read_message(const size_t idx) {
+    ssize_t len_received = read(poll_descriptors.at(idx).fd, connections.at(idx).get_buffer(), 0);
+
+    if (len_received < 0) { // TODO Czy należy zamykać to połączenie
+        tga::io::log::err::error("read from existing connection");
+        close_client_connection(idx);
+    } else if (len_received == 0) { // EOF
+        // TODO Można napisać taki log.
+        // tga::io::log::info::server::client_disconnected(
+        //         tga::net::get_ip(idx_clt_map.at(i).second),
+        //         tga::net::get_port(idx_clt_map.at(i).second));
+        close_client_connection(idx);
+    }
+
+    return len_received;
+}
+
+/**
+ * @brief Handles a poll event for a known client.
+ * 
+ * This function processes the poll event for a known client,
+ * checking if there is data to read, write or if there is an error.
+ * 
+ * @param idx The index of the client in the poll descriptors.
+ * @param rinfo The ReceiveInfo object to store information
+ *              about possible received message.
+ * 
+ * @note This function is called when a poll event occurs for SOME client,
+ *       but maybe not for THIS client.
+ */
+void handle_poll_event_from_known_client(const size_t idx, ReceiveInfo &rinfo) {
+    // FIXME Po co ten POLLERR? Zobaczyć odpowiedź labowca.
+    if ((poll_descriptors.at(idx).revents & (POLLIN | POLLERR)) != 0) {
+        ssize_t len_received = read_message(idx);
+        if (len_received > 0) handle_message(idx, (size_t) len_received, rinfo);
+    }
+
+    if ((poll_descriptors.at(idx).revents & POLLOUT) != 0) {
+        
+    }
+}
+
+// Handles a correct poll event.
+void handle_poll_events(ReceiveInfo &rinfo) {
+    (void) rinfo; // FIXME To suppress unused variable warning.
+
+    if (poll_descriptors.at(new_ipv4_clt_idx).revents & POLLIN) {
+        new_clients(AF_INET);
+    }
+    
+    if (poll_descriptors.at(new_ipv6_clt_idx).revents & POLLIN) {
+        new_clients(AF_INET6);
+    }
+
+    for (size_t i = 2; i < poll_descriptors.size(); ++i) {
+        if (connections.find(i) != connections.end()) {
+            handle_poll_event_from_known_client(i, rinfo);
+        }
+        // TODO Maybe also check, if poll_descriptors.at(i).fd != -1, but it is analogical.
+    }
+}
+
+/**
+ * @brief Receives messages from the clients.
+ * 
+ * This function waits for messages from clients, processes and handles them.
+ * It uses the poll system call to wait for events on the server sockets.
+ * 
+ * @return The received message as a ReceiveInfo object.
+ */
+ReceiveInfo receive_message() {
+    ReceiveInfo rinfo;
+    clear_revents();
+    
+    // TODO Maybe handle Ctrl-C like in echo-server-nonblocking.c
+
+    int poll_status = poll(poll_descriptors.data(), (nfds_t) poll_descriptors.size(), -1);
+    if (poll_status < 0) { // fail
+        tga::io::log::err::error("poll");
+        exit(1);
+    } else if (poll_status == 0) { // timeout
+        tga::io::log::err::error("poll timeout");
+        exit(1);
+    } else { // success
+        handle_poll_events(rinfo);
+    }
+
+    return rinfo;
 }
 
 } // namespace server
@@ -240,7 +535,7 @@ int get_sockfd() {
  * 
  * @return The received message as a ReceiveInfo object.
  */
-ReceiveInfo receive_message() {
+ReceiveInfo receive_message() {  
     // TODO Implement
     return ReceiveInfo{};
 }

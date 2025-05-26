@@ -7,7 +7,8 @@ namespace tga {
 namespace msg {
 
 /**
- * Abstract class representing a message sent between server and a client.
+ * @brief Abstract class representing a message sent between server and a client.
+ * @note Every class derived from Message must implement a deserialize function (see MessageCombinators.h).
  */
 class Message {
 protected:

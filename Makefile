@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -Wall -Wextra -std=c++17 -O2
+CXXFLAGS := -Wall -Wextra -std=c++17 -O0 -g
 LDFLAGS :=
 
 SRC_DIR := .
@@ -14,21 +14,24 @@ SERVER_SRC := $(SRC_DIR)/approx-server.cpp \
               $(SRC_DIR)/io.cpp \
 			  $(SRC_DIR)/netutils.cpp \
 			  $(SRC_DIR)/communication.cpp \
-			  $(SRC_DIR)/clients-manager.cpp
+			  $(SRC_DIR)/clients-manager.cpp \
+			  $(SRC_DIR)/MessageCombinators.cpp
 
 CLIENT_SRC := $(SRC_DIR)/approx-client.cpp \
               $(SRC_DIR)/args.cpp \
               $(SRC_DIR)/Rational.cpp \
               $(SRC_DIR)/io.cpp \
 			  $(SRC_DIR)/netutils.cpp \
-			  $(SRC_DIR)/communication.cpp
+			  $(SRC_DIR)/communication.cpp \
+			  $(SRC_DIR)/clients-manager.cpp \
+			  $(SRC_DIR)/MessageCombinators.cpp
 
 SERVER_OBJ := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/server-%.o,$(SERVER_SRC))
 CLIENT_OBJ := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/client-%.o,$(CLIENT_SRC))
 
 .PHONY: all clean
 
-all: $(SERVER_TGT) $(CLIENT_TGT)
+all: $(SERVER_TGT) $(CLIENT_TGT) cleano
 
 # Kompilacja plików serwera z -DSERVER
 $(OBJ_DIR)/server-%.o: $(SRC_DIR)/%.cpp
@@ -46,3 +49,7 @@ $(CLIENT_TGT): $(CLIENT_OBJ)
 
 clean:
 	rm -f *.o $(SERVER_TGT) $(CLIENT_TGT)
+
+# TODO Delete this in release version
+cleano:
+	rm -f *.o

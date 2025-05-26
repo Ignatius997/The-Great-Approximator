@@ -8,15 +8,19 @@
 #include <utility>
 #include <netinet/in.h>
 
+#include "netutils.h"
+
 namespace tga {
 namespace io {
+
+using tga::net::SockAddrVariant;
 
 namespace log {
     namespace err {
         void error(const std::string &error_description);
         void message(const std::string &message_type,
                 const std::string &player,
-                const sockaddr_in &addr);
+                const SockAddrVariant &addr);
     }
 
     namespace info {

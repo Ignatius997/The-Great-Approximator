@@ -1,30 +1,41 @@
 NOTE TODO:
 6. Modus Operandi. (in progress)
 
-Przenieść część net do communication, a mianowicie wszystko globalne do communication, a czesc prywatnych zrobic globalnych. DONE
-TODO Zaimplementować tga::comm::server::receive_message
+ERROR
+Priorytet: d1
+Ostatnio: MessageCombinators.cpp l. 107
+ERROR
 
+TODO Tak w ogóle to chyba ta logika nie jest do końca poprawna, odbieranie i wysyłanie powinno być w jednej pętli (która zapewne będzie w main)
+TODO Zaimplementować tga::comm::server::receive_message
+TODO Ustawić timeout w serwerze
 TODO Napisać łączenie się, rozłączanie, itd
 NOTE Pamiętać o trybie nieblokującym (tylko w serwerze) i timeoutach (w serwerze).
     a) setup server-DONE client-DONE
     b) zgloszenie się klienta, czyli wyslanie HELLO DONE
-    c) przyjęcie nowego klienta, czyli obsłużenie HELLO ...
-    d) obsługa sygnałów dla debugowania, ażeby przetestować sprzątanie
+    c) przyjęcie nowego klienta w TCP DONE
+    d) obsłużenie HELLO ...
+    d1) zaimplementować deserializację wiadomości w Message Z UŻYCIEM ReceiveInfo
+    e) obsługa sygnałów dla debugowania, ażeby przetestować sprzątanie
 
     z) test ...
 
-TODO Operatory porównania w netutils dla sockaddr_in i sockaddr_in6 są dość kontrowersyjne, bo porównują rodzinę (która chyba powinna być taka sama)
+TODO To jak z tym POLLIN | POLLERR? Zobaczyć odpowiedź labowca.
+TODO Funkcje (de)rejestrujące w cltman.
+TODO Dać jakąś fajniejszy sposób na przechowywanie informacji o błędach w wiadomości.
+    Poza tym czy w errorze o niepoprawnej wiadomości na moodle $komunikat oznacza TYP komunikatu, czy CAŁY komunikat?
 
-11. Jak zrealizować bezpieczne i wydajne zapisywanie do pliku coeffs przez serwer?
-    ODP: Chyba też trzeba zrobić poll-em, tak jak jest chyba zresztą w jakichś labach.
-    No ale w sumie to program jest jednowątkowy... zbadać!
+TODO Operatory porównania w netutils dla sockaddr_in i sockaddr_in6 są dość kontrowersyjne, bo porównują rodzinę (która chyba powinna być taka sama).
+TODO W sumie to można dodać #ifdef TGA_SERVER, kiedy includujemy clients-manager.h w communication.h, no bo po co to klientowi.
+
+TODO Może zoptymalizować tga::comm::server::clear_revents()
 
 18. Zamień te gettery typu `requests_handled` na `get_requests_handled`.
 19. Czy na pewno zrobiono walidację argumentów w ProgramArgs?
 
 Q8. W związku z dużą ilością include-ów iostream itd, czy należy robić jakieś deklarowanie obiektu iostream,
     tak jak to miało miejsce w jednym z mini-projektów na KPCPP?
-
+Q12. Aktualny rozmiar bufora to 8 KB. Może dac więcej?
 NOTE Q&A:
 Q1. C czy C++?
     ODP: C++
@@ -48,6 +59,10 @@ Q9. Czy dwa klienty o tym samym adresie, lecz innym porcie mogą się połączy�
     ODP: Tak.
 Q10. Czy trzeba jakoś chronić plik `coeffs`?
     ODP: Nie, bo plik nie jest modyfikowany w trakcie działania serwera.
+Q11. Właśnie zajmuję się też dodawaniem nowego klienta w cltman.
+    Okazuje się, że najpierw znamy sam adres, jeszcze bez id.
+    Czy w takiej sytuacji powinniśmy go przechowywać w clients_managerze?
+    ODP: NIE! Nie należy ufać ludziom bezimiennym.
 
 NOTE DONE:
 8. MOŻNA zrobić te argsy ładniejsze: zamiast dwóch plików .cpp zrobić jeden
@@ -74,3 +89,4 @@ NOTE DONE:
 15. Zmienić nazwę global na coś lepszego, tam przecież nie ma niczego globalnie modyfikowalnego. DONE (global->config)
 16. Nie trzymać dwóch zmiennych ipv4_ i ipv6_ do adresu w client, ale variant lub union. DONE
 17. Nie nadużywać makr preprocesora. DONE
+20. Przenieść część net do communication, a mianowicie wszystko globalne do communication, a czesc prywatnych zrobic globalnych. DONE

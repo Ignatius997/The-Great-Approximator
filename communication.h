@@ -10,12 +10,6 @@ namespace tga {
 namespace comm {
 
 using tga::msg::Message;
-using SockAddrVariant = std::variant<sockaddr_in, sockaddr_in6>;
-
-namespace server {
-    void clear_revents();
-    int poll_events();
-}
 
 namespace client {
     int get_sockfd();

@@ -6,26 +6,11 @@
 namespace tga {
 namespace rat {
 
+// FIXME Na razie unused, poza tym wymaga liczby po kropce
 static std::regex rational_regex(R"(^-?\d+(\.\d{1,7})?$)");
 
-// ==== Constructors ====
-
-/**
- * @brief Default constructor for Rational class.
- * Initializes the rational number to 0.
- */
-Rational::Rational() : num("0") {}
-
-/**
- * @brief Constructs a Rational object from a string.
- */
-Rational::Rational(const std::string& value) {
-    // Validate the input string using regex
-    if (!std::regex_match(value, rational_regex)) {
-        throw std::invalid_argument("Invalid rational number format: " + value);
-    }
-    num = value;
-}
+// NOTE Należy pamiętać, że Rational dopuszcza liczby typu 2.,
+// NOTE czyli z kropką, ale bez cyfr po kropce.
 
 // ==== Operators ====
 
