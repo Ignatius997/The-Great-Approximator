@@ -11,6 +11,8 @@
 #include <queue>
 #include <map>
 #include <utility>
+#include <sys/time.h>
+#include <memory>
 
 #include "communication.h"
 #include "utils.h"
@@ -25,8 +27,6 @@
 namespace tga {
 namespace comm {
 
-using tga::msg::Message;
-using tga::utils::ReceiveInfo;
 using tga::net::SockAddrVariant;
 using tga::msg::Message;
 
@@ -34,11 +34,17 @@ namespace server {
 
 namespace {
 
+/** Time in seconds to wait for HELLO message
+ * from the client from the moment of connection.
+ */
+constexpr time_t hello_to_sec = 3;
+
 const std::string empty_string = ""; // Empty string for client ID.
 
 constexpr size_t buffer_size = (1 << 13); // 8 KiB
 std::vector<std::vector<char>> buffers; // Buffers for receiving messages from clients.
 
+size_t messages_to_receive_ = 0; // Number of messages to receive from clients.
 constexpr int socket_queue_len = 10; // FIXME Ulepszyć to?
 uint16_t port; // Stored in host byte order.
 int ipv4_socket_fd = -1;
@@ -116,6 +122,21 @@ public:
 std::map<size_t, ClientConnection> connections;
 // NOTE Number of active clients can be extracted by `connections.size()`.
 
+auto cmp = [](const std::pair<size_t, timeval> &a, const std::pair<size_t, timeval> &b) {
+    if (a.second.tv_sec != b.second.tv_sec) {
+        return a.second.tv_sec > b.second.tv_sec;
+    } else if (a.second.tv_usec != b.second.tv_usec) {
+        return a.second.tv_usec > b.second.tv_usec;
+    }
+    return a.first > b.first;
+};
+
+std::priority_queue<
+    std::pair<size_t, timeval>,
+    std::vector<std::pair<size_t, timeval>>,
+    decltype(cmp)
+    > timeouts(cmp);
+
 /** Indexes of sockets awaiting for new clients. */
 constexpr size_t new_ipv4_clt_idx = 0;
 constexpr size_t new_ipv6_clt_idx = 1;
@@ -164,44 +185,63 @@ void setup_socket(int &sockfd, const int family) {
     }
 }
 
-} // anonymous namespace
-
-/**
- * @brief Sets up the server socket and prepares it for accepting connections.
- * @note Code based on the code from laboratories.
- */
-void setup() {
-    port = static_cast<uint16_t>(tga::args::port());
-    setup_socket(ipv4_socket_fd, AF_INET);
-    setup_socket(ipv6_socket_fd, AF_INET6);
-
-    // Configure two first descriptors to await for new connections.
-    poll_descriptors.reserve(2);
-    poll_descriptors.push_back( (pollfd) {
-        .fd = ipv4_socket_fd,
-        .events = POLLIN,
-        .revents = 0,
-    });
-    poll_descriptors.push_back( (pollfd) {
-        .fd = ipv6_socket_fd,
-        .events = POLLIN,
-        .revents = 0,
-    });
-}
-
-/**
- * @brief Clears the revents field of the poll descriptors.
- * 
- * This function is used to reset the revents field of the poll descriptors
- * to 0 after processing events.
- */
-void clear_revents() {
-    for (auto &poll_desc : poll_descriptors) {
-        poll_desc.revents = 0;
+void close_client_connection(const int idx) {
+    if (tga::config::debug) tga::io::log::err::error("closing connection");
+    
+    auto it = connections.find(idx);
+    if (it != connections.end()) {
+        ClientConnection &conn = it->second;
+        tga::cltman::deregister_client(conn.get_client_id(), conn.get_addr());
+        connections.erase(it);
     }
+    
+    close(poll_descriptors.at(idx).fd);
+    
+    poll_descriptors.at(idx).fd = -1;
+    free_poll_indices.push(idx);
 }
 
-void register_new_client(const int client_fd, const SockAddrVariant &client_addr) {
+/**
+ * @brief Reads a message from the client.
+ * 
+ * This function reads a message from the client and returns the length of
+ * the received message. If an error occurs, it closes the client connection.
+ * 
+ * @param idx The index of the client in the poll descriptors.
+ * @return The length of the received message, or -1 on error.
+ * 
+ * @note This function not only calls `read` function, but also handles
+ *       `read` error and the end of the connection (EOF).
+ *       However, it leaves handling received message to the caller.
+ */
+ssize_t read_message(const size_t idx) {
+    ssize_t len_received = read(poll_descriptors.at(idx).fd, connections.at(idx).get_buffer(), 0);
+
+    if (len_received < 0) { // TODO Czy należy zamykać to połączenie
+        tga::io::log::err::error("read from existing connection");
+        close_client_connection(idx);
+    } else if (len_received == 0) { // EOF
+        // TODO Można napisać taki log.
+        // tga::io::log::info::server::client_disconnected(
+        //         tga::net::get_ip(idx_clt_map.at(i).second),
+        //         tga::net::get_port(idx_clt_map.at(i).second));
+        close_client_connection(idx);
+    }
+
+    return len_received;
+}
+
+/**
+ * @brief Registers a new client connection.
+ * 
+ * This function registers a new client connection by adding it to the
+ * poll descriptors and initializing the client connection data.
+ * 
+ * @param client_fd The file descriptor of the client socket.
+ * @param client_addr The address of the client.
+ * @return The index of the registered client in the poll descriptors.
+ */
+size_t register_new_client(const int client_fd, const SockAddrVariant &client_addr) {
     size_t idx;
 
     if (free_poll_indices.empty()) {
@@ -229,6 +269,7 @@ void register_new_client(const int client_fd, const SockAddrVariant &client_addr
     // Register only the address of the client.
     // The client shall be outrightly registered only after HELLO message.
     connections.at(idx) = ClientConnection(client_addr);
+    return idx;
 }
 
 /**
@@ -273,6 +314,194 @@ int accept_new_client(const int family, SockAddrVariant &client_addr) {
     return client_fd;
 }
 
+using tga::msg::MsgPtr;
+
+class MessageHandler {
+public:
+    virtual ~MessageHandler() = default;
+
+    /**
+     * @brief Handles the received message.
+     * 
+     * This function should be overridden by derived classes to handle
+     * specific types of messages.
+     * 
+     * @param msg The received message.
+     * @param rinfo Information about the received message.
+     */
+    virtual void handle(const MsgPtr &msg, ReceiveInfo &rinfo) = 0;
+};
+
+class HelloHandler : public MessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+class CoeffHandler : public MessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+class PutHandler : public MessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+class BadPutHandler : public MessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+class StateHandler : public MessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+class PenaltyHandler : public MessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+class ScoringHandler : public MessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+using MsgHandlerPtr = std::unique_ptr<MessageHandler>;
+
+MsgHandlerPtr make_handler(const std::string &msg_type) {
+        if (msg_type == "HELLO") {
+            return std::make_unique<HelloHandler>();
+        } else if (msg_type == "COEFF") {
+            return std::make_unique<CoeffHandler>();
+        } else if (msg_type == "STATE") {
+            return std::make_unique<StateHandler>();
+        } else if (msg_type == "SCORING") {
+            return std::make_unique<ScoringHandler>();
+        } else if (msg_type == "PUT") {
+            return std::make_unique<PutHandler>();
+        } else if (msg_type == "BAD_PUT") {
+            return std::make_unique<BadPutHandler>();
+        } else if (msg_type == "PENALTY") {
+            return std::make_unique<PenaltyHandler>();
+        } else {
+            tga::io::log::err::error("unknown message type: " + msg_type);
+            return nullptr;
+        }
+    }
+
+void handle_received_message(const size_t idx, const size_t len_received, ReceiveInfo &rinfo) {
+    assert(len_received > 0);
+
+    const char *buffer = connections.at(idx).get_buffer();
+    MsgPtr msg = tga::msg::deserialize_message(buffer, len_received, rinfo);
+    
+    if (msg == nullptr) { // Invalid message
+        tga::io::log::err::error("invalid message received from client");
+        return;
+    } else if (rinfo.err != 0) { // Error during deserialization
+        const ClientConnection &conn = connections.at(idx);
+        std::string player_id = conn.baptised() ? conn.get_client_id() : empty_string;
+        auto ip = connections.at(idx).get_addr();
+        tga::io::log::err::message(rinfo.msg_type, player_id, ip);
+        return;
+    }
+    
+    // TODO Implement MessageHandler
+    MsgHandlerPtr handler = make_handler(msg->messageType());
+    handler->handle(msg, rinfo);
+}
+
+} // anonymous namespace
+
+/**
+ * @brief Returns number of correct messages left to receive from the clients
+ */
+size_t messages_to_receive() {
+    return messages_to_receive_;
+}
+
+/**
+ * @brief Return the size of the poll structure
+ */
+size_t poll_structure_size() {
+    return poll_descriptors.size();
+}
+
+void update_timeouts() {
+    // TODO Implement
+}
+
+bool connection_exists(const size_t idx) {
+    assert(idx < poll_descriptors.size());
+    return connections.find(idx) != connections.end();
+    // TODO Co z tym fantem zrobić && poll_descriptors.at(idx).fd != -1;
+}
+
+/**
+ * @brief Sets up the server socket and prepares it for accepting connections.
+ * @note Code based on the code from laboratories.
+ */
+void setup() {
+    messages_to_receive_ = tga::args::server::M();
+    port = static_cast<uint16_t>(tga::args::port());
+    setup_socket(ipv4_socket_fd, AF_INET);
+    setup_socket(ipv6_socket_fd, AF_INET6);
+
+    // Configure two first descriptors to await for new connections.
+    poll_descriptors.reserve(2);
+    poll_descriptors.push_back( (pollfd) {
+        .fd = ipv4_socket_fd,
+        .events = POLLIN,
+        .revents = 0,
+    });
+    poll_descriptors.push_back( (pollfd) {
+        .fd = ipv6_socket_fd,
+        .events = POLLIN,
+        .revents = 0,
+    });
+}
+
+/**
+ * @brief Clears the revents field of the poll descriptors.
+ * 
+ * This function is used to reset the revents field of the poll descriptors
+ * to 0 after processing events.
+ */
+void clear_revents() {
+    for (auto &poll_desc : poll_descriptors) {
+        poll_desc.revents = 0;
+    }
+}
+
 /**
  * @brief Accepts new clients of given family.
  * 
@@ -296,75 +525,26 @@ void new_clients(int family) {
             exit(1);
         }
 
-        register_new_client(client_fd, client_addr);
+        size_t idx = register_new_client(client_fd, client_addr);
+        
+        // Set timeout for new client;
+        timeval hello_to { .tv_sec = hello_to_sec, .tv_usec = 0};
+        timeouts.push(std::make_pair(idx, hello_to));
     }
 }
 
-void close_client_connection(const int idx) {
-    if (tga::config::debug) tga::io::log::err::error("closing connection");
-    
-    auto it = connections.find(idx);
-    if (it != connections.end()) {
-        ClientConnection &conn = it->second;
-        tga::cltman::deregister_client(conn.get_client_id(), conn.get_addr());
-        connections.erase(it);
+bool new_ipv4_clients() {
+    if (poll_descriptors.at(new_ipv4_clt_idx).revents & POLLIN) {
+        return true;
     }
-    
-    close(poll_descriptors.at(idx).fd);
-    
-    poll_descriptors.at(idx).fd = -1;
-    free_poll_indices.push(idx);
+    return false;
 }
 
-void handle_message(const size_t idx, const size_t len_received, ReceiveInfo &rinfo) {
-    (void) rinfo; // FIXME To suppress unused variable warning.
-    assert(len_received > 0);
-
-    const char *buffer = connections.at(idx).get_buffer();
-    auto msg = tga::msg::deserialize_message(buffer, len_received, rinfo);
-    
-    if (msg == nullptr) { // Invalid message
-        tga::io::log::err::error("invalid message received from client");
-        return;
-    } else if (rinfo.err != 0) { // Error during deserialization
-        const ClientConnection &conn = connections.at(idx);
-        std::string player_id = conn.baptised() ? conn.get_client_id() : empty_string;
-        auto ip = connections.at(idx).get_addr();
-        tga::io::log::err::message(rinfo.msg_type, player_id, ip);
-        return;
-    } else {
-
+bool new_ipv6_clients() {
+    if (poll_descriptors.at(new_ipv6_clt_idx).revents & POLLIN) {
+        return true;
     }
-}
-
-/**
- * @brief Reads a message from the client.
- * 
- * This function reads a message from the client and returns the length of
- * the received message. If an error occurs, it closes the client connection.
- * 
- * @param idx The index of the client in the poll descriptors.
- * @return The length of the received message, or -1 on error.
- * 
- * @note This function not only calls `read` function, but also handles
- *       `read` error and the end of the connection (EOF).
- *       However, it leaves handling received message to the caller.
- */
-ssize_t read_message(const size_t idx) {
-    ssize_t len_received = read(poll_descriptors.at(idx).fd, connections.at(idx).get_buffer(), 0);
-
-    if (len_received < 0) { // TODO Czy należy zamykać to połączenie
-        tga::io::log::err::error("read from existing connection");
-        close_client_connection(idx);
-    } else if (len_received == 0) { // EOF
-        // TODO Można napisać taki log.
-        // tga::io::log::info::server::client_disconnected(
-        //         tga::net::get_ip(idx_clt_map.at(i).second),
-        //         tga::net::get_port(idx_clt_map.at(i).second));
-        close_client_connection(idx);
-    }
-
-    return len_received;
+    return false;
 }
 
 /**
@@ -380,64 +560,37 @@ ssize_t read_message(const size_t idx) {
  * @note This function is called when a poll event occurs for SOME client,
  *       but maybe not for THIS client.
  */
-void handle_poll_event_from_known_client(const size_t idx, ReceiveInfo &rinfo) {
-    // FIXME Po co ten POLLERR? Zobaczyć odpowiedź labowca.
+void handle_poll_event(const size_t idx, ReceiveInfo &rinfo) {
     if ((poll_descriptors.at(idx).revents & (POLLIN | POLLERR)) != 0) {
         ssize_t len_received = read_message(idx);
-        if (len_received > 0) handle_message(idx, (size_t) len_received, rinfo);
+        if (len_received > 0) handle_received_message(idx, (size_t) len_received, rinfo);
     }
 
     if ((poll_descriptors.at(idx).revents & POLLOUT) != 0) {
-        
-    }
-}
-
-// Handles a correct poll event.
-void handle_poll_events(ReceiveInfo &rinfo) {
-    (void) rinfo; // FIXME To suppress unused variable warning.
-
-    if (poll_descriptors.at(new_ipv4_clt_idx).revents & POLLIN) {
-        new_clients(AF_INET);
-    }
-    
-    if (poll_descriptors.at(new_ipv6_clt_idx).revents & POLLIN) {
-        new_clients(AF_INET6);
-    }
-
-    for (size_t i = 2; i < poll_descriptors.size(); ++i) {
-        if (connections.find(i) != connections.end()) {
-            handle_poll_event_from_known_client(i, rinfo);
-        }
-        // TODO Maybe also check, if poll_descriptors.at(i).fd != -1, but it is analogical.
+        // TODO Implement
     }
 }
 
 /**
- * @brief Receives messages from the clients.
- * 
- * This function waits for messages from clients, processes and handles them.
- * It uses the poll system call to wait for events on the server sockets.
- * 
- * @return The received message as a ReceiveInfo object.
+ * @brief Polls in-out events from the clients.
  */
-ReceiveInfo receive_message() {
-    ReceiveInfo rinfo;
-    clear_revents();
-    
-    // TODO Maybe handle Ctrl-C like in echo-server-nonblocking.c
+int poll_events() {
+    const auto &tv = timeouts.top().second;
+    return poll(poll_descriptors.data(),
+                (nfds_t) poll_descriptors.size(),
+                tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
 
-    int poll_status = poll(poll_descriptors.data(), (nfds_t) poll_descriptors.size(), -1);
-    if (poll_status < 0) { // fail
-        tga::io::log::err::error("poll");
-        exit(1);
-    } else if (poll_status == 0) { // timeout
-        tga::io::log::err::error("poll timeout");
-        exit(1);
-    } else { // success
-        handle_poll_events(rinfo);
-    }
-
-    return rinfo;
+/**
+ * @brief Ends the communication.
+ * 
+ * This function sends SCORING messages to clients, closes connections,
+ * and exits the program.
+ */
+void end() {
+    // send SCORING messages to clients
+    // close connections
+    // exit
 }
 
 } // namespace server
@@ -573,21 +726,10 @@ void send_message(int fd, const Message &msg) {
     }
 }
 
-ReceiveInfo receive_message() {
-    if (tga::config::server) return tga::comm::server::receive_message();
-    return tga::comm::client::receive_message();
-}
-
-void handle_message(const ReceiveInfo &info) {
-    (void) info;
-    // TODO Implement this function
-}
-
-void end() {
-    // send SCORING messages to clients
-    // close connections
-    // exit
-}
+// ReceiveInfo receive_message() {
+//     if (tga::config::server) return tga::comm::server::receive_message();
+//     return tga::comm::client::receive_message();
+// }
 
 } // comm
 } // tga

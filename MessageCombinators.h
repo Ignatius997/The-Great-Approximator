@@ -30,18 +30,14 @@ class HelloMessage : public Message {
 private:
     const std::string player_id;
 
-protected:
-    std::string messageType() const override final {
-        return "HELLO";
-    }
-
-    std::string messageContent() const override {
-        return player_id;
-    }
-
 public:
     explicit HelloMessage(const std::string& id) : player_id(id) {}
+
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
+
+    std::string messageType() const override final { return "HELLO"; }
+
+    std::string messageContent() const override { return player_id; }
 };
 
 /**
@@ -53,18 +49,16 @@ private:
     /** Coefficients of the polynomial. coeffs.size() == N + 1. */
     const std::vector<Rational> coeffs;
 
-protected:
-    std::string messageType() const override final {
-        return "COEFF";
-    }
+public:
+    CoeffMessage(std::vector<Rational> coeffs) : Message(), coeffs(std::move(coeffs)) {}
+
+    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
+
+    std::string messageType() const override final { return "COEFF"; }
 
     std::string messageContent() const override {
         return tga::io::file::read_coeffs();
     }
-
-public:
-    CoeffMessage(std::vector<Rational> coeffs) : Message(), coeffs(std::move(coeffs)) {}
-    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
 };
 
 // ==== Game Messages ====
@@ -79,10 +73,12 @@ private:
     // NOTE Change K to the actual size of the approximation
     const std::vector<Rational> &approx; // Approximation of the function. approx.size() == K.
 
-protected:
-    std::string messageType() const override final {
-        return "STATE";
-    }
+public:
+    StateMessage(const std::vector<Rational> &approx) : approx(approx) {}
+
+    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
+
+    std::string messageType() const override final { return "STATE"; }
 
     std::string messageContent() const override {
         std::string content;
@@ -97,10 +93,6 @@ protected:
         
         return content;
     }
-
-public:
-    StateMessage(const std::vector<Rational> &approx) : approx(approx) {}
-    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
 };
 
 /**
@@ -111,16 +103,15 @@ private:
     const size_t point;
     const Rational value;
 
-protected:
-    std::string messageContent() const override final {
-        return std::to_string(point) + " " + static_cast<std::string>(value);
-    }
-
 public:
     PVMessage(size_t p, Rational v) : point(p), value(std::move(v)) {}
     static std::optional<std::pair<size_t, Rational>> deserialize_helper(
                                                     const std::string& msg_body,
                                                     ReceiveInfo& rinfo);
+    
+    std::string messageContent() const override final {
+        return std::to_string(point) + " " + static_cast<std::string>(value);
+    }
 };
 
 /**
@@ -128,14 +119,11 @@ public:
  * This message contains the point and the value to be put.
  */
 class PutMessage : public PVMessage {
-protected:
-    std::string messageType() const override final {
-        return "PUT";
-    }
-
 public:
     using PVMessage::PVMessage; // Inherit constructor
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo& rinfo);
+
+    std::string messageType() const override final { return "PUT"; }
 };
 
 /**
@@ -143,14 +131,11 @@ public:
  * This message indicates that the PUT message was not accepted.
  */
 class BadPutMessage : public PVMessage {
-protected:
-    std::string messageType() const override final {
-        return "BAD_PUT";
-    }
-    
 public:
     using PVMessage::PVMessage; // Inherit constructor
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo& rinfo);
+
+    std::string messageType() const override final { return "BAD_PUT"; }
 };
 
 /**
@@ -158,13 +143,11 @@ public:
  * This message indicates that the client has been penalized.
  */
 class PenaltyMessage : public PVMessage {
-protected:
-    std::string messageType() const override final {
-        return "PENALTY";
-    }
 public:
     using PVMessage::PVMessage; // Inherit constructor
+
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
+    std::string messageType() const override final { return "PENALTY"; }
 };
 
 // ==== Endgame Messages ====
@@ -177,7 +160,11 @@ class ScoringMessage : public Message {
 private:
     const std::map<std::string, Rational> &scores;
 
-protected:
+public:
+    ScoringMessage(std::map<std::string, Rational> scores) : scores(std::move(scores)) {}
+
+    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
+
     std::string messageType() const override final {
         return "SCORING";
     }
@@ -196,10 +183,6 @@ protected:
 
         return content;
     }
-
-public:
-    ScoringMessage(std::map<std::string, Rational> scores) : scores(std::move(scores)) {}
-    static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
 };
 
 MsgPtr deserialize_message(const char *buffer, const size_t len_received, ReceiveInfo &rinfo);

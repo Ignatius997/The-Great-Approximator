@@ -16,4 +16,8 @@ int main(int argc, char* argv[]) {
     tga::comm::setup();
     tga::comm::send_message(tga::comm::client::get_sockfd(),
                             HelloMessage(tga::args::client::player_id()));
+
+    while (true) {
+        
+    }
 }

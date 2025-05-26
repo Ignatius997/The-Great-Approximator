@@ -11,7 +11,7 @@ namespace msg {
  * @note Every class derived from Message must implement a deserialize function (see MessageCombinators.h).
  */
 class Message {
-protected:
+public:
     /**
      * @brief Returns the type or name of the message.
      * 
@@ -32,7 +32,6 @@ protected:
      */
     virtual std::string messageContent() const = 0;
 
-public:
     /**
      * @brief Serializes the message into a string format.
      * 

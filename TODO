@@ -2,11 +2,12 @@ NOTE TODO:
 6. Modus Operandi. (in progress)
 
 ERROR
-Priorytet: d1
-Ostatnio: MessageCombinators.cpp l. 107
+Priorytet: g
 ERROR
 
-TODO Tak w ogóle to chyba ta logika nie jest do końca poprawna, odbieranie i wysyłanie powinno być w jednej pętli (która zapewne będzie w main)
+TODO Tak w ogóle to chyba ta logika nie jest do końca poprawna, odbieranie i wysyłanie powinno być w jednej pętli (która zapewne będzie w main):
+    Powinno być nie `receive_message`, ale `poll_events()` i `handle_events()`
+TODO Nie powinniśmy najpierw odbierać wszystkie poll-e, a dopiero potem je handle-ować, ale załatwiać je na bieżąco
 TODO Zaimplementować tga::comm::server::receive_message
 TODO Ustawić timeout w serwerze
 TODO Napisać łączenie się, rozłączanie, itd
@@ -15,18 +16,20 @@ NOTE Pamiętać o trybie nieblokującym (tylko w serwerze) i timeoutach (w serwe
     b) zgloszenie się klienta, czyli wyslanie HELLO DONE
     c) przyjęcie nowego klienta w TCP DONE
     d) obsłużenie HELLO ...
-    d1) zaimplementować deserializację wiadomości w Message Z UŻYCIEM ReceiveInfo
-    e) obsługa sygnałów dla debugowania, ażeby przetestować sprzątanie
+    d1) zaimplementować deserializację wiadomości w Message z użyciem ReceiveInfo DONE
+    d2) zmienić obsługę poll-ów. DONE
+    f) timeout w serwrze DONE (na razie tylko dla hello)
+    g) Implementacja MessageHandlerów
 
+    y) obsługa sygnałów dla debugowania, ażeby przetestować sprzątanie
     z) test ...
 
-TODO To jak z tym POLLIN | POLLERR? Zobaczyć odpowiedź labowca.
 TODO Funkcje (de)rejestrujące w cltman.
 TODO Dać jakąś fajniejszy sposób na przechowywanie informacji o błędach w wiadomości.
     Poza tym czy w errorze o niepoprawnej wiadomości na moodle $komunikat oznacza TYP komunikatu, czy CAŁY komunikat?
 
 TODO Operatory porównania w netutils dla sockaddr_in i sockaddr_in6 są dość kontrowersyjne, bo porównują rodzinę (która chyba powinna być taka sama).
-TODO W sumie to można dodać #ifdef TGA_SERVER, kiedy includujemy clients-manager.h w communication.h, no bo po co to klientowi.
+TODO W sumie to można nie kompilować clients-manager.cpp dla klienta.
 
 TODO Może zoptymalizować tga::comm::server::clear_revents()
 
