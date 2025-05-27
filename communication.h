@@ -3,14 +3,14 @@
 
 #include <variant>
 
-#include "utils.h"
+#include "netutils.h"
 #include "Message.h"
 
 namespace tga {
 namespace comm {
 
 using tga::msg::Message;
-using tga::utils::ReceiveInfo;
+using tga::net::ReceiveInfo;
 
 namespace server {
     size_t messages_to_receive();

@@ -18,7 +18,7 @@ using tga::net::SockAddrVariant;
 namespace log {
     namespace err {
         void error(const std::string &error_description);
-        void message(const std::string &message_type,
+        void message(const std::string &message,
                 const std::string &player,
                 const SockAddrVariant &addr);
     }

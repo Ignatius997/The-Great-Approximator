@@ -4,17 +4,20 @@
 #include <optional>
 #include <regex>
 #include <utility>
+#include <set>
 
 #include "Message.h"
 #include "MessageCombinators.h"
-#include "utils.h"
+#include "netutils.h"
 #include "args.h"
 #include "Rational.h"
+#include "config.h"
 
 namespace tga {
 namespace msg {
 
-using tga::utils::ReceiveInfo;
+using tga::net::ReceiveInfo;
+using tga::net::ReceivedDataStatus;
 using tga::rat::Rational;
 
 namespace {
@@ -51,7 +54,7 @@ std::optional<std::vector<Rational>> extract_coeffs(const std::string &msg_body,
     static const std::regex re(full_regex);
     std::smatch match;
     if (!std::regex_match(msg_body, match, re)) {
-        rinfo.err = 1;
+        rinfo.err = ReceivedDataStatus::INVALID_FORMAT;
         return std::nullopt; // Invalid message format
     }
 
@@ -63,19 +66,27 @@ std::optional<std::vector<Rational>> extract_coeffs(const std::string &msg_body,
 
     for (auto it = numbers_begin; it != numbers_end; ++it) {
         coeffs.emplace_back(it->str());
-        if (coeffs.size() > exp_size) {
-            rinfo.err = 1; // Too many coefficients
+        if (coeffs.size() > exp_size) { // Too many coefficients
+            rinfo.err = ReceivedDataStatus::INVALID_LENGTH;
             return std::nullopt;
         }
     }
 
-    if (coeffs.size() != exp_size) {
-        rinfo.err = 1; // Incorrect number of coefficients
+    if (coeffs.size() != exp_size) { // Incorrect number of coefficients
+        rinfo.err = ReceivedDataStatus::INVALID_LENGTH;
         return std::nullopt;
     }
 
     return std::optional<std::vector<Rational>>(std::move(coeffs));
 }
+
+std::set <std::string> message_types_expected_by_server = {
+    "HELLO", "PUT"
+};
+
+std::set <std::string> message_types_expected_by_client = {
+    "COEFF", "STATE", "BAD_PUT", "PENALTY", "SCORING"
+};
 
 } // anonymous namespace
 
@@ -86,8 +97,8 @@ MsgPtr HelloMessage::deserialize(const std::string &msg_body,
     std::smatch match;
 
     if (std::regex_match(msg_body, match, re)) {
-        rinfo.err = 1;
-        return nullptr; // Invalid message format.
+        rinfo.err = ReceivedDataStatus::INVALID_FORMAT;
+        return nullptr;
     }
 
     std::string player_id = match[1].str();
@@ -114,25 +125,13 @@ std::optional<std::pair<size_t, Rational>> PVMessage::deserialize_helper(
     static const std::regex re(regex_str);
     std::smatch match;
 
-
     if (!std::regex_match(msg_body, match, re)) {
-        rinfo.err = 1; // Invalid message format
+        rinfo.err = ReceivedDataStatus::INVALID_FORMAT;
         return std::nullopt;
     }
 
     size_t point = (size_t) std::stoi(match[1].str()); // Conversion is safe here.
     tga::rat::Rational value(match[2].str());
-
-    if (point > tga::args::server::K()) {
-        rinfo.err = 1; // Point out of range
-        return std::nullopt;
-    }
-
-    if ((double) value < -5.0 || (double) value > 5.0) {
-        rinfo.err = 1; // Value out of range
-        return std::nullopt;
-    }
-
     return std::make_pair(point, std::move(value));
 }
 
@@ -163,7 +162,7 @@ MsgPtr ScoringMessage::deserialize(const std::string& msg_body, ReceiveInfo& rin
     static const std::regex re(full_regex);
 
     if (!std::regex_match(msg_body, re)) {
-        rinfo.err = 1;
+        rinfo.err = ReceivedDataStatus::INVALID_FORMAT;
         return nullptr;
     }
 
@@ -181,7 +180,7 @@ MsgPtr ScoringMessage::deserialize(const std::string& msg_body, ReceiveInfo& rin
 
         // Check lexicographical order of player IDs.
         if (!last_id.empty() && player_id <= last_id) {
-            rinfo.err = 1;
+            rinfo.err = ReceivedDataStatus::INVALID_VALUE;
             return nullptr;
         }
         last_id = player_id;
@@ -192,27 +191,70 @@ MsgPtr ScoringMessage::deserialize(const std::string& msg_body, ReceiveInfo& rin
     return std::make_unique<ScoringMessage>(std::move(results));
 }
 
+/**
+ * @brief Deserializes a message from a buffer into a message object.
+ *
+ * This function takes a raw buffer containing a serialized message, attempts to parse
+ * the message type and its body, and then dispatches the body to the appropriate
+ * deserializer function based on the message type. It also performs validation of the
+ * message format and type, and sets error information in the provided ReceiveInfo
+ * structure if deserialization fails.
+ *
+ * The function first extracts the message type (the substring before the first space).
+ * It then checks if the message type is recognized and expected by the current side
+ * (server or client). If the type is valid, it calls the corresponding deserializer
+ * for the message body. If any step fails, the function sets an appropriate error
+ * code in @p rinfo and returns nullptr.
+ *
+ * @param buffer Pointer to the buffer containing the serialized message.
+ * @param len_received The number of bytes received in the buffer.
+ * @param rinfo Reference to a ReceiveInfo structure where error information will be stored.
+ * @return MsgPtr A unique pointer to the deserialized message object on success,
+ *         or nullptr if deserialization fails (with error details set in @p rinfo).
+ *
+ * @note The function expects the message to be in the format: "<TYPE> <BODY>",
+ *       where <TYPE> is a recognized message type and <BODY> is the message content.
+ * @note The function validates both the message type and the expected direction
+ *       (server/client) for the message.
+ * @note On failure, @p rinfo.err is set to one of the ReceivedDataStatus values
+ *       indicating the reason for failure (e.g., INVALID_FORMAT, INVALID_TYPE).
+ */
 MsgPtr deserialize_message(const char *buffer,
                                             const size_t len_received,
                                             ReceiveInfo &rinfo) {
-    std::string full_msg(buffer, static_cast<size_t>(len_received));
-    
+    std::string full_msg(buffer, static_cast<size_t>(len_received));    
     const size_t first_space_idx = full_msg.find(' ');
 
     if (first_space_idx == std::string::npos) { // No space found.
-        rinfo.msg_type = "UNKNOWN_MESSAGE_TYPE";
+        rinfo.err = ReceivedDataStatus::INVALID_TYPE;
         return nullptr;
     }
 
+    // Extract message type.
     std::string msg_type = full_msg.substr(0, first_space_idx);
     auto it = deserializers.find(msg_type);
     
-    if (it == deserializers.end()) {
-        rinfo.msg_type = "UNKNOWN_MESSAGE_TYPE";
+    // Check if the message type is recognized.
+    if (it == deserializers.end()) { // Unresolved message type.
+        rinfo.err = ReceivedDataStatus::INVALID_TYPE;
         return nullptr;
+    } else {
+        // Check if the message type is expected by the this connection side.
+        if (tga::config::server) {
+            if (message_types_expected_by_server.find(msg_type) ==
+                message_types_expected_by_server.end()) {
+                rinfo.err = ReceivedDataStatus::INVALID_TYPE;
+                return nullptr;
+            }
+        } else {
+            if (message_types_expected_by_client.find(msg_type) ==
+                message_types_expected_by_client.end()) {
+                rinfo.err = ReceivedDataStatus::INVALID_TYPE;
+                return nullptr;
+            }
+        }
     }
 
-    rinfo.msg_type = msg_type; // Set the message type in ReceiveInfo.
     std::string msg_body = full_msg.substr(first_space_idx + 1);
     auto deserializer = it->second;
     return deserializer(msg_body, rinfo);

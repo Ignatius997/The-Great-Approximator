@@ -13,31 +13,50 @@
 #include <utility>
 #include <sys/time.h>
 #include <memory>
+#include <utility>
+#include <algorithm>
+#include <cctype>
 
 #include "communication.h"
-#include "utils.h"
 #include "config.h"
 #include "io.h"
 #include "Message.h"
 #include "MessageCombinators.h"
 #include "netutils.h"
 #include "args.h"
-#include "clients-manager.h"
+#include "Rational.h"
 
 namespace tga {
 namespace comm {
 
 using tga::net::SockAddrVariant;
+using tga::net::ReceivedDataStatus;
+using tga::net::CommunicationPhase;
+
 using tga::msg::Message;
+using tga::msg::MsgPtr;
+
+using tga::msg::HelloMessage;
+using tga::msg::CoeffMessage;
+using tga::msg::StateMessage;
+using tga::msg::PutMessage;
+using tga::msg::BadPutMessage;
+using tga::msg::PenaltyMessage;
+using tga::msg::ScoringMessage;
+
+using tga::rat::Rational;
 
 namespace server {
 
 namespace {
 
-/** Time in seconds to wait for HELLO message
+/** Time to wait for HELLO message
  * from the client from the moment of connection.
  */
-constexpr time_t hello_to_sec = 3;
+constexpr timeval hello_timeout { .tv_sec = 3, .tv_usec = 0};
+
+/** Delay for sending BAD_PUT. */
+constexpr timeval bad_put_delay { .tv_sec = 1, .tv_usec = 0 };
 
 const std::string empty_string = ""; // Empty string for client ID.
 
@@ -57,6 +76,15 @@ int ipv6_socket_fd = -1;
 std::vector<pollfd> poll_descriptors;
 std::queue<size_t> free_poll_indices; // Indexes of free poll descriptors.
 
+/**
+ * @brief Determines meaning of the timeout that occurred for the client,
+ *        that operates this enum.
+ */
+enum TimeoutMeaning {
+    NO_MESSAGE_RECEIVED, // No message received from the was client in expected time.
+    SEND_DELAY // Delay time in sending a message passed.
+};
+
 class ClientConnection {
 protected:
     std::string client_id = empty_string; // Client ID, set after HELLO message, empty in default.
@@ -67,6 +95,16 @@ protected:
     size_t buffer_pos = 0; // Position in the buffer, i.e., how many bytes were already written to the buffer.
 
     bool baptised_ = false; // Whether the client has been baptised (i.e., has a name).
+
+    std::optional<TimeoutMeaning> timeout_meaning = std::nullopt; // Meaning of the timeout, if it occurred.
+    std::optional<MsgPtr> timeout_message = std::nullopt; // Message to send after the timeout, if it occurred.
+
+    // NOTE na razie unused.
+    CommunicationPhase phase = CommunicationPhase::START;
+    // FIXME Po pierwsze magiczna stała
+    // FIXME Po drugie, to czy nie można tego zrobić w wektorze?
+    Rational approximations[10001] = {Rational("0")}; // Approximations for the polynomial, indexed by point (0 to 10000).
+
 
 public:
     ClientConnection(const SockAddrVariant &addr) : addr(addr) {}
@@ -112,6 +150,69 @@ public:
      */
     char *get_buffer() {
         return buffer;
+    }
+
+    /**
+     * @brief Adds a value to the approximation for the given point.
+     * @param point The point index (0 to 10000).
+     * @param value The value to add to the approximation (-5.0 to 5.0).
+     * @note The function assumes, that point <- 10^4 and |value| <= 5.0.
+     */
+    void approxAdd(size_t point, double value) {
+        assert(point <= 10000);
+        assert(value >= -5.0 && value <= 5.0);
+        approximations[point] += Rational(value);
+    }
+
+    /**
+     * @brief Sets the meaning of the timeout that occurred for the client.
+     * @param meaning The meaning of the timeout.
+     */
+    void setTimeoutMeaning(const TimeoutMeaning meaning) {
+        timeout_meaning = meaning;
+    }
+
+    /**
+     * @brief Returns the meaning of the timeout that occurred for the client.
+     * @return The meaning of the timeout, or std::nullopt if no timeout occurred.
+     */
+    [[nodiscard]]
+    std::optional<TimeoutMeaning> getTimeoutMeaning() const {
+        return timeout_meaning;
+    }
+
+    /**
+     * @brief Sets the message to send after the timeout.
+     * @param msg The message to send after the timeout.
+     * @note `msg` is moved into the object, so it should not be used after this call.
+     */
+    void setTimeoutMessage(MsgPtr msg) {
+        timeout_message = std::move(msg);
+    }
+
+    /**
+     * @brief Returns the message to send after the timeout.
+     * @return The message to send after the timeout, or std::nullopt if no message is set.
+     * @note The message is moved from the object, so it should not be used after this call.
+     */
+    [[nodiscard]]
+    std::optional<MsgPtr> getTimeoutMessage() {
+        auto msg = std::move(timeout_message);
+        timeout_message = std::nullopt; // Clear the message after moving it.
+        return msg;
+    }
+
+    std::vector<Rational> getApproximations() const {
+        auto end = approximations + tga::args::server::K();
+        return std::vector<Rational>(approximations, end);
+    }
+
+    timeval getStateDelay() const {
+        time_t lowercase_count = std::count_if(
+            client_id.begin(), client_id.end(),
+            [](unsigned char c) { return std::islower(c); }
+        );
+        return { .tv_sec = lowercase_count, .tv_usec = 0 };
     }
 };
 
@@ -190,8 +291,7 @@ void close_client_connection(const int idx) {
     
     auto it = connections.find(idx);
     if (it != connections.end()) {
-        ClientConnection &conn = it->second;
-        tga::cltman::deregister_client(conn.get_client_id(), conn.get_addr());
+        // TODO Czy należy coś robić z conn (it->second)?
         connections.erase(it);
     }
     
@@ -199,36 +299,6 @@ void close_client_connection(const int idx) {
     
     poll_descriptors.at(idx).fd = -1;
     free_poll_indices.push(idx);
-}
-
-/**
- * @brief Reads a message from the client.
- * 
- * This function reads a message from the client and returns the length of
- * the received message. If an error occurs, it closes the client connection.
- * 
- * @param idx The index of the client in the poll descriptors.
- * @return The length of the received message, or -1 on error.
- * 
- * @note This function not only calls `read` function, but also handles
- *       `read` error and the end of the connection (EOF).
- *       However, it leaves handling received message to the caller.
- */
-ssize_t read_message(const size_t idx) {
-    ssize_t len_received = read(poll_descriptors.at(idx).fd, connections.at(idx).get_buffer(), 0);
-
-    if (len_received < 0) { // TODO Czy należy zamykać to połączenie
-        tga::io::log::err::error("read from existing connection");
-        close_client_connection(idx);
-    } else if (len_received == 0) { // EOF
-        // TODO Można napisać taki log.
-        // tga::io::log::info::server::client_disconnected(
-        //         tga::net::get_ip(idx_clt_map.at(i).second),
-        //         tga::net::get_port(idx_clt_map.at(i).second));
-        close_client_connection(idx);
-    }
-
-    return len_received;
 }
 
 /**
@@ -314,8 +384,6 @@ int accept_new_client(const int family, SockAddrVariant &client_addr) {
     return client_fd;
 }
 
-using tga::msg::MsgPtr;
-
 class MessageHandler {
 public:
     virtual ~MessageHandler() = default;
@@ -327,70 +395,139 @@ public:
      * specific types of messages.
      * 
      * @param msg The received message.
+     * @param idx The index of the client in the poll descriptors.
      * @param rinfo Information about the received message.
+     * 
+     * @note This function assumes, that
+     *       tga::MessageCombinators::deserialize_message()
+     *       function resulted in a successful deserialization, meaning
+     *       the message type is corrected and
+     *       all message values are VALID, BUT NOT CORRECT (see PutHandler::handle).
      */
-    virtual void handle(const MsgPtr &msg, ReceiveInfo &rinfo) = 0;
+    virtual void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) = 0;
 };
 
 class HelloHandler : public MessageHandler {
 public:
-    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
-        (void) msg; // Unused parameter
-        (void) rinfo; // Unused parameter
-        // TODO Implement
+    /**
+     * @brief Handles the HELLO message from the client.
+     * 
+     * This function checks if the client is already baptised. If not, it baptises
+     * the client with the given ID and registers the client in the clients manager.
+     * Otherwise, it ignores the message and sets an error in the receive info.
+     * 
+     * @param msg The received HELLO message.
+     * @param idx The index of the client in the poll descriptors.
+     * @param rinfo Information about the received message.
+     */
+    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
+        ClientConnection &conn = connections.at(idx);
+        HelloMessage hello_msg = dynamic_cast<HelloMessage &>(*msg);
+
+        if (conn.baptised()) {
+            tga::io::log::err::message(hello_msg.serialize(),
+                                    conn.get_client_id(),
+                                    conn.get_addr());
+            rinfo.err = ReceivedDataStatus::INVALID_TYPE;
+        } else {
+            // Baptise client with given ID.
+            conn.baptise(hello_msg.getPlayerID());
+            tga::io::log::info::server::client_known(
+                tga::net::get_ip(conn.get_addr()),
+                tga::net::get_port(conn.get_addr()),
+                conn.get_client_id());
+        }
     }
 };
 
 class CoeffHandler : public MessageHandler {
 public:
-    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
         (void) msg; // Unused parameter
         (void) rinfo; // Unused parameter
+        (void) idx; // Unused parameter
         // TODO Implement
+
     }
 };
 
 class PutHandler : public MessageHandler {
 public:
-    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
-        (void) msg; // Unused parameter
-        (void) rinfo; // Unused parameter
-        // TODO Implement
+    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
+        ClientConnection &conn = connections.at(idx);
+        PutMessage put_msg = dynamic_cast<PutMessage &>(*msg);
+
+        const size_t point = put_msg.getPoint();
+        const double value = (double) put_msg.getValue();
+
+        // Check, if point or value is out of range.
+        if (point > tga::args::server::K() || value < -5.0 || value > 5.0) {
+            rinfo.err = ReceivedDataStatus::INVALID_VALUE;
+            tga::io::log::err::message(
+                put_msg.serialize(),
+                conn.get_client_id(),
+                conn.get_addr());
+            
+            // Plan sending BAD_PUT Message.
+            MsgPtr timeout_msg = std::make_unique<BadPutMessage>(
+                                        point, put_msg.getValue());
+            conn.setTimeoutMeaning(TimeoutMeaning::SEND_DELAY);
+            conn.setTimeoutMessage(std::move(timeout_msg));
+            timeouts.emplace(idx, bad_put_delay);
+        } else { // Correct PUT message.
+            conn.approxAdd(point, value);
+            // TODO Napisać taki log
+            // tga::io::log::info::server::put(
+            //     conn.get_client_id(),
+            //     conn.get_addr(),
+            //     point,
+            //     value);
+            
+            // Plan sending STATE Message.
+            MsgPtr timeout_msg = std::make_unique<StateMessage>(conn.getApproximations());
+            conn.setTimeoutMeaning(TimeoutMeaning::SEND_DELAY);
+            conn.setTimeoutMessage(std::move(timeout_msg));
+            timeouts.emplace(idx, conn.getStateDelay());
+        }
     }
 };
 
 class BadPutHandler : public MessageHandler {
 public:
-    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
         (void) msg; // Unused parameter
         (void) rinfo; // Unused parameter
+        (void) idx; // Unused parameter
         // TODO Implement
     }
 };
 
 class StateHandler : public MessageHandler {
 public:
-    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
         (void) msg; // Unused parameter
         (void) rinfo; // Unused parameter
-        // TODO Implement
+        (void) idx; // Unused parameter// TODO Implement
+
     }
 };
 
 class PenaltyHandler : public MessageHandler {
 public:
-    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
         (void) msg; // Unused parameter
         (void) rinfo; // Unused parameter
+        (void) idx; // Unused parameter
         // TODO Implement
     }
 };
 
 class ScoringHandler : public MessageHandler {
 public:
-    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
         (void) msg; // Unused parameter
         (void) rinfo; // Unused parameter
+        (void) idx; // Unused parameter
         // TODO Implement
     }
 };
@@ -398,46 +535,80 @@ public:
 using MsgHandlerPtr = std::unique_ptr<MessageHandler>;
 
 MsgHandlerPtr make_handler(const std::string &msg_type) {
-        if (msg_type == "HELLO") {
-            return std::make_unique<HelloHandler>();
-        } else if (msg_type == "COEFF") {
-            return std::make_unique<CoeffHandler>();
-        } else if (msg_type == "STATE") {
-            return std::make_unique<StateHandler>();
-        } else if (msg_type == "SCORING") {
-            return std::make_unique<ScoringHandler>();
-        } else if (msg_type == "PUT") {
-            return std::make_unique<PutHandler>();
-        } else if (msg_type == "BAD_PUT") {
-            return std::make_unique<BadPutHandler>();
-        } else if (msg_type == "PENALTY") {
-            return std::make_unique<PenaltyHandler>();
-        } else {
-            tga::io::log::err::error("unknown message type: " + msg_type);
-            return nullptr;
-        }
+    if (msg_type == "HELLO") {
+        return std::make_unique<HelloHandler>();
+    } else if (msg_type == "COEFF") {
+        return std::make_unique<CoeffHandler>();
+    } else if (msg_type == "STATE") {
+        return std::make_unique<StateHandler>();
+    } else if (msg_type == "SCORING") {
+        return std::make_unique<ScoringHandler>();
+    } else if (msg_type == "PUT") {
+        return std::make_unique<PutHandler>();
+    } else if (msg_type == "BAD_PUT") {
+        return std::make_unique<BadPutHandler>();
+    } else if (msg_type == "PENALTY") {
+        return std::make_unique<PenaltyHandler>();
+    } else {
+        tga::io::log::err::error("unknown message type: " + msg_type);
+        return nullptr;
     }
+}
 
+/**
+ * @brief Handles a message received from a client.
+ *
+ * This function processes a message received from a client at the specified index in the poll descriptors.
+ * It attempts to deserialize the message from the client's buffer and performs validation and error handling.
+ * If the message is invalid or deserialization fails, it logs the error, optionally closes the connection
+ * (e.g., if the client is not yet baptised), and returns. If the message is valid, it ensures protocol correctness
+ * (e.g., the first message from a new client must be a valid HELLO message), and if so, dispatches the message
+ * to the appropriate handler based on its type.
+ *
+ * The function also updates the ReceiveInfo structure with error information if deserialization or validation fails.
+ * It is responsible for enforcing protocol rules, such as requiring a HELLO message as the first message from a client,
+ * and for invoking the correct message handler for further processing of valid messages.
+ *
+ * @param idx Index of the client in the poll_descriptors vector.
+ * @param len_received Number of bytes received from the client.
+ * @param rinfo Reference to a ReceiveInfo structure where error information will be stored.
+ *
+ * @note If the message is invalid or the protocol is violated, the function may close the client connection.
+ * @note This function should be called after data has been read from the client's socket into its buffer.
+ * @note The function logs all invalid messages and protocol violations for auditing and debugging purposes.
+ */
 void handle_received_message(const size_t idx, const size_t len_received, ReceiveInfo &rinfo) {
     assert(len_received > 0);
 
     const char *buffer = connections.at(idx).get_buffer();
     MsgPtr msg = tga::msg::deserialize_message(buffer, len_received, rinfo);
+    const auto &conn = connections.at(idx);
+
     
-    if (msg == nullptr) { // Invalid message
-        tga::io::log::err::error("invalid message received from client");
-        return;
-    } else if (rinfo.err != 0) { // Error during deserialization
-        const ClientConnection &conn = connections.at(idx);
-        std::string player_id = conn.baptised() ? conn.get_client_id() : empty_string;
-        auto ip = connections.at(idx).get_addr();
-        tga::io::log::err::message(rinfo.msg_type, player_id, ip);
-        return;
+    if (msg == nullptr || rinfo.err != ReceivedDataStatus::SUCCESS) { // Invalid message.
+        std::string message_text(buffer, len_received);
+        auto player_id = conn.baptised() ? conn.get_client_id() : "UNKNOWN";
+        auto addr = conn.get_addr();
+        tga::io::log::err::message(message_text, player_id, addr);
+        
+        if (!conn.baptised()) close_client_connection(idx);
+    } else { // Valid message.
+        if (tga::config::server) {
+            // First message from the client MUST BE a correct HELLO message.
+            // Otherwise, the connection with the client has to be closed.
+            if (!conn.baptised() && msg->messageType() != "HELLO") {
+                tga::io::log::err::message(
+                    msg->serialize(),
+                    conn.get_client_id(),
+                    conn.get_addr());
+                close_client_connection(idx);
+                return;
+            }
+        }
+
+        MsgHandlerPtr handler = make_handler(msg->messageType());
+        handler->handle(msg, idx, rinfo);
     }
-    
-    // TODO Implement MessageHandler
-    MsgHandlerPtr handler = make_handler(msg->messageType());
-    handler->handle(msg, rinfo);
 }
 
 } // anonymous namespace
@@ -528,8 +699,7 @@ void new_clients(int family) {
         size_t idx = register_new_client(client_fd, client_addr);
         
         // Set timeout for new client;
-        timeval hello_to { .tv_sec = hello_to_sec, .tv_usec = 0};
-        timeouts.push(std::make_pair(idx, hello_to));
+        timeouts.emplace(idx, hello_timeout);
     }
 }
 
@@ -562,8 +732,10 @@ bool new_ipv6_clients() {
  */
 void handle_poll_event(const size_t idx, ReceiveInfo &rinfo) {
     if ((poll_descriptors.at(idx).revents & (POLLIN | POLLERR)) != 0) {
-        ssize_t len_received = read_message(idx);
-        if (len_received > 0) handle_received_message(idx, (size_t) len_received, rinfo);
+        ssize_t len_received = read(poll_descriptors.at(idx).fd, connections.at(idx).get_buffer(), 0);
+        if (len_received < 0) tga::io::log::err::error("read from existing connection");
+        else if (len_received == 0) close_client_connection(idx);
+        else handle_received_message(idx, (size_t) len_received, rinfo);
     }
 
     if ((poll_descriptors.at(idx).revents & POLLOUT) != 0) {
@@ -575,10 +747,14 @@ void handle_poll_event(const size_t idx, ReceiveInfo &rinfo) {
  * @brief Polls in-out events from the clients.
  */
 int poll_events() {
-    const auto &tv = timeouts.top().second;
+    int timeout = -1;
+    if (!timeouts.empty()) {
+        const auto &tv = timeouts.top().second;
+        timeout = tv.tv_sec * 1000 + tv.tv_usec / 1000; // Convert to miliseconds.
+    }
     return poll(poll_descriptors.data(),
-                (nfds_t) poll_descriptors.size(),
-                tv.tv_sec * 1000 + tv.tv_usec / 1000);
+            (nfds_t) poll_descriptors.size(),
+            timeout);
 }
 
 /**

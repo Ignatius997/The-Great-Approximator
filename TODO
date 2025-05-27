@@ -1,15 +1,42 @@
 NOTE TODO:
 6. Modus Operandi. (in progress)
 
+Zbigniew Jurkiewicz mówi, że POLLERR bierze się stąd, że kiedy w trakcie
+np. read-a lub innej funkcji systemowej nadejdzie sygnał, lub nastąpi inna
+sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
+i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
+
 ERROR
-Priorytet: g
+Skończyłem na: konstruktor cltman::ClientsInfo podczas handlowania Puta
+handlowanie Puta DONE
+usunięcie cltman DONE
+Zaimplementować konstruktor Rationala z double. DONE
+Zaimplementować operator dodawania dla Rationala DONE
 ERROR
 
+ReceiveInfo
+    Jak widać na przykładzie PutHandler-a, ReceiveInfo nie powinno zawierać jedynie informacji
+    o tym, czy się udało odczytać wszystko poprawnie, ale również o tym, co poszło nie tak.
+    enum { SUCCESS, INVALID_MSG_TYPE, INVALID_VALUE, INVALID_LENGTH, INVALID_FORMAT}
+
+Timeouty
+    Timeouty w serwerze mają dwa znaczenia:
+        a) minął czas oczekiwania na wiadomość od klienta
+            Proste, nie trzeba niczego zapamiętywać
+        b) minął czas opóźnienia przesyłania wiadomości
+            Trzeba zapamiętać, że timeout znaczy właśnie to.
+            Trzeba zapamiętać, co należy przesłać, bo komu już wiemy z indeksu
+    A zatem w ClientsConnection trzeba przechowywać:
+        - znaczenie timeoutu: enum TimeoutMeaning { NO_MESSAGE, DELAY }
+        - wiadomość do przesłania std::optional<MsgPtr> msg_to_send;
+
+TODO Widać lukę w MessageHandler: Klienmtowi nie potrzebne jest idx, a zatem mamy dwie klasy Handler-ów: klientowi i serwerowi.
+    Coraz bardziej widać, że trzeba będzie zrobić oddzielne pliki dla klienta i serwera.
 TODO Tak w ogóle to chyba ta logika nie jest do końca poprawna, odbieranie i wysyłanie powinno być w jednej pętli (która zapewne będzie w main):
     Powinno być nie `receive_message`, ale `poll_events()` i `handle_events()`
 TODO Nie powinniśmy najpierw odbierać wszystkie poll-e, a dopiero potem je handle-ować, ale załatwiać je na bieżąco
 TODO Zaimplementować tga::comm::server::receive_message
-TODO Ustawić timeout w serwerze
+TODO Zaimplementować mierzenie czasu w timeout-ach
 TODO Napisać łączenie się, rozłączanie, itd
 NOTE Pamiętać o trybie nieblokującym (tylko w serwerze) i timeoutach (w serwerze).
     a) setup server-DONE client-DONE

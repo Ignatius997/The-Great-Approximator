@@ -9,7 +9,6 @@
 #include <variant>
 
 #include "args.h"
-#include "netutils.h"
 #include "io.h"
 #include "config.h"
 

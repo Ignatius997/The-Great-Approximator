@@ -35,13 +35,13 @@ void error(const std::string &error_description) {
  * @param player The player who sent the message.
  * @param addr The address of the sender.
  */
-void message(const std::string &message_type,
+void message(const std::string &message,
              const std::string &player,
              const SockAddrVariant &addr) {
     auto ip = tga::net::get_ip(addr);
     auto port = tga::net::get_port(addr);
     std::cerr << "ERROR: bad message from [" << ip << "]:" << port
-              << ", " << player << ": " << message_type << std::endl;
+              << ", " << player << ": " << message << std::endl;
 }
 
 } // namespace err

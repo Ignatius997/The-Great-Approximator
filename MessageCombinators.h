@@ -11,12 +11,12 @@
 #include "Message.h"
 #include "io.h"
 #include "Rational.h"
-#include "utils.h"
+#include "netutils.h"
 
 namespace tga {
 namespace msg {
 
-using tga::utils::ReceiveInfo;
+using tga::net::ReceiveInfo;
 using tga::rat::Rational;
 using MsgPtr = std::unique_ptr<Message>;
 
@@ -32,12 +32,10 @@ private:
 
 public:
     explicit HelloMessage(const std::string& id) : player_id(id) {}
-
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-
     std::string messageType() const override final { return "HELLO"; }
-
     std::string messageContent() const override { return player_id; }
+    std::string getPlayerID() const { return player_id; }
 };
 
 /**
@@ -108,10 +106,13 @@ public:
     static std::optional<std::pair<size_t, Rational>> deserialize_helper(
                                                     const std::string& msg_body,
                                                     ReceiveInfo& rinfo);
-    
+
     std::string messageContent() const override final {
         return std::to_string(point) + " " + static_cast<std::string>(value);
     }
+
+    size_t getPoint() const { return point; }
+    Rational getValue() const { return value; }
 };
 
 /**

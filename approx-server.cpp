@@ -5,10 +5,9 @@
 #include "args.h"
 #include "config.h"
 #include "communication.h"
-#include "clients-manager.h"
-#include "utils.h"
+#include "netutils.h"
 
-using tga::utils::ReceiveInfo;
+using tga::net::ReceiveInfo;
 
 using tga::comm::setup;
 using tga::comm::server::clear_revents;

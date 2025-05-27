@@ -36,6 +36,34 @@ namespace net {
 
 using SockAddrVariant = std::variant<sockaddr_in, sockaddr_in6>;
 
+// NOTE Na razie unused
+/**
+ * @brief This enum determines in which phase is currently
+ * the communication between client and server.
+ */
+enum CommunicationPhase {
+    // TODO Implement
+    START
+};
+
+enum ReceivedDataStatus {
+    SUCCESS,        // Message is valid and processed successfully.
+    INVALID_TYPE,   // Unresolved or not the expected message type.
+    INVALID_FORMAT, // Wrong format for the message type
+    INVALID_LENGTH, // Wrong length of message data.
+    INVALID_VALUE   // Invalid value in the message data.
+};
+
+// FIXME Jeśli nie będzie tutaj innych wartości, to ReceiveInfo można zamienić na enum z wartościami ReceivedDataStatus.
+/**
+ * @brief This class is used to store information about the
+ * received message.
+ */
+class ReceiveInfo {
+public:
+    ReceivedDataStatus err = SUCCESS; // Error of the message processing.
+};
+
 int _bind(int &sockfd, uint16_t port, const int family);
 uint16_t extract_port(const int sockfd, const int family);
 
