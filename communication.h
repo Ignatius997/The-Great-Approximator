@@ -18,6 +18,7 @@ namespace server {
 
     void clear_revents();
     void update_timeouts();
+    void handle_timeouts();
     void handle_poll_event(const size_t idx, ReceiveInfo &rinfo);
     void new_clients(const int family);
     void end();

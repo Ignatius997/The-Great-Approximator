@@ -12,6 +12,7 @@ using tga::net::ReceiveInfo;
 using tga::comm::setup;
 using tga::comm::server::clear_revents;
 using tga::comm::server::update_timeouts;
+using tga::comm::server::handle_timeouts;
 using tga::comm::server::handle_poll_event;
 using tga::comm::server::messages_to_receive;
 using tga::comm::server::poll_structure_size;
@@ -29,9 +30,10 @@ int main(int argc, char* argv[]) {
     setup();
 
     while (messages_to_receive() > 0) {
+        // FIXME Na razie wygląda na to, że to rinfo powinno być poziom niżej.
+        // FIXME bo tutaj nie jest ono wykorzystywane
         ReceiveInfo rinfo;
         clear_revents();
-        update_timeouts();
         
         // TODO Maybe handle Ctrl-C like in echo-server-nonblocking.c
 
@@ -40,9 +42,12 @@ int main(int argc, char* argv[]) {
             tga::io::log::err::error("poll");
             exit(1);
         } else if (poll_status == 0) { // timeout
-            tga::io::log::err::error("poll timeout");
-            exit(1);
+            update_timeouts();
+            handle_timeouts();
         } else { // success
+            update_timeouts();
+            handle_timeouts();
+
             if (new_ipv4_clients()) new_clients(AF_INET);
 
             if (new_ipv6_clients()) new_clients(AF_INET6);

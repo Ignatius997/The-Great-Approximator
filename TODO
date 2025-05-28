@@ -7,38 +7,13 @@ sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
 i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
 
 ERROR
-Skończyłem na: konstruktor cltman::ClientsInfo podczas handlowania Puta
-handlowanie Puta DONE
-usunięcie cltman DONE
-Zaimplementować konstruktor Rationala z double. DONE
-Zaimplementować operator dodawania dla Rationala DONE
+Wysyłanie wiadomości przez serwera
 ERROR
 
-ReceiveInfo
-    Jak widać na przykładzie PutHandler-a, ReceiveInfo nie powinno zawierać jedynie informacji
-    o tym, czy się udało odczytać wszystko poprawnie, ale również o tym, co poszło nie tak.
-    enum { SUCCESS, INVALID_MSG_TYPE, INVALID_VALUE, INVALID_LENGTH, INVALID_FORMAT}
-
-Timeouty
-    Timeouty w serwerze mają dwa znaczenia:
-        a) minął czas oczekiwania na wiadomość od klienta
-            Proste, nie trzeba niczego zapamiętywać
-        b) minął czas opóźnienia przesyłania wiadomości
-            Trzeba zapamiętać, że timeout znaczy właśnie to.
-            Trzeba zapamiętać, co należy przesłać, bo komu już wiemy z indeksu
-    A zatem w ClientsConnection trzeba przechowywać:
-        - znaczenie timeoutu: enum TimeoutMeaning { NO_MESSAGE, DELAY }
-        - wiadomość do przesłania std::optional<MsgPtr> msg_to_send;
-
 TODO Widać lukę w MessageHandler: Klienmtowi nie potrzebne jest idx, a zatem mamy dwie klasy Handler-ów: klientowi i serwerowi.
-    Coraz bardziej widać, że trzeba będzie zrobić oddzielne pliki dla klienta i serwera.
-TODO Tak w ogóle to chyba ta logika nie jest do końca poprawna, odbieranie i wysyłanie powinno być w jednej pętli (która zapewne będzie w main):
-    Powinno być nie `receive_message`, ale `poll_events()` i `handle_events()`
-TODO Nie powinniśmy najpierw odbierać wszystkie poll-e, a dopiero potem je handle-ować, ale załatwiać je na bieżąco
-TODO Zaimplementować tga::comm::server::receive_message
-TODO Zaimplementować mierzenie czasu w timeout-ach
-TODO Napisać łączenie się, rozłączanie, itd
-NOTE Pamiętać o trybie nieblokującym (tylko w serwerze) i timeoutach (w serwerze).
+TODO Coraz bardziej widać, że trzeba będzie zrobić oddzielne pliki dla klienta i serwera.
+
+TODO Komunikacja:
     a) setup server-DONE client-DONE
     b) zgloszenie się klienta, czyli wyslanie HELLO DONE
     c) przyjęcie nowego klienta w TCP DONE
@@ -46,17 +21,12 @@ NOTE Pamiętać o trybie nieblokującym (tylko w serwerze) i timeoutach (w serwe
     d1) zaimplementować deserializację wiadomości w Message z użyciem ReceiveInfo DONE
     d2) zmienić obsługę poll-ów. DONE
     f) timeout w serwrze DONE (na razie tylko dla hello)
-    g) Implementacja MessageHandlerów
+    g) Implementacja MessageHandlerów DONE dla serwera.
 
     y) obsługa sygnałów dla debugowania, ażeby przetestować sprzątanie
     z) test ...
 
-TODO Funkcje (de)rejestrujące w cltman.
-TODO Dać jakąś fajniejszy sposób na przechowywanie informacji o błędach w wiadomości.
-    Poza tym czy w errorze o niepoprawnej wiadomości na moodle $komunikat oznacza TYP komunikatu, czy CAŁY komunikat?
-
 TODO Operatory porównania w netutils dla sockaddr_in i sockaddr_in6 są dość kontrowersyjne, bo porównują rodzinę (która chyba powinna być taka sama).
-TODO W sumie to można nie kompilować clients-manager.cpp dla klienta.
 
 TODO Może zoptymalizować tga::comm::server::clear_revents()
 
@@ -93,6 +63,30 @@ Q11. Właśnie zajmuję się też dodawaniem nowego klienta w cltman.
     Okazuje się, że najpierw znamy sam adres, jeszcze bez id.
     Czy w takiej sytuacji powinniśmy go przechowywać w clients_managerze?
     ODP: NIE! Nie należy ufać ludziom bezimiennym.
+Q12. ReceiveInfo
+    Jak widać na przykładzie PutHandler-a, ReceiveInfo nie powinno zawierać jedynie informacji
+    o tym, czy się udało odczytać wszystko poprawnie, ale również o tym, co poszło nie tak.
+    enum { SUCCESS, INVALID_MSG_TYPE, INVALID_VALUE, INVALID_LENGTH, INVALID_FORMAT}
+
+Q13. Timeouty
+    Timeouty w serwerze mają dwa znaczenia:
+        a) minął czas oczekiwania na wiadomość od klienta
+            Proste, nie trzeba niczego zapamiętywać
+        b) minął czas opóźnienia przesyłania wiadomości
+            Trzeba zapamiętać, że timeout znaczy właśnie to.
+            Trzeba zapamiętać, co należy przesłać, bo komu już wiemy z indeksu
+    A zatem w ClientsConnection trzeba przechowywać:
+        - znaczenie timeoutu: enum TimeoutMeaning { NO_MESSAGE, DELAY }
+        - wiadomość do przesłania std::optional<MsgPtr> msg_to_send;
+
+    Kiedy powinniśmy update-ować timeout-y?
+    Kiedy poll zwróci 0, czyli nastąpi timeout, to należy zrobić gettimeofday i dla każdego elementu w kolejce timeout-ów
+    sprawdzić, czy minął czas timeout-u.
+    
+    Jeśli poll jednak zwróci >0, to należy OD RAZU zaktualizować timeout-y wszystkich elementów w kolejce timeout-ów
+    i zakładać, że obsługa wszystkich zdarzeń zajmie <ε. Należy odnotować, że jeśli wywołalibyśmy gettimeofday po
+    obsłużeniu wszystkich zdarzeń, to mogłoby się okazać, że minął czas timeout-u i byłoby to obsłużenia.
+    Możnaby to co prawda zoptymalizować, ale jest to strzelanie z armaty do wróbla. 
 
 NOTE DONE:
 8. MOŻNA zrobić te argsy ładniejsze: zamiast dwóch plików .cpp zrobić jeden
@@ -120,3 +114,6 @@ NOTE DONE:
 16. Nie trzymać dwóch zmiennych ipv4_ i ipv6_ do adresu w client, ale variant lub union. DONE
 17. Nie nadużywać makr preprocesora. DONE
 20. Przenieść część net do communication, a mianowicie wszystko globalne do communication, a czesc prywatnych zrobic globalnych. DONE
+21. Handle-owanie wiadomości od klienta. DONE
+22. Logika timeout-ów. DONE
+23.

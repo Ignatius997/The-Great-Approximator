@@ -1,21 +1,24 @@
 #include <unistd.h>
-#include <string>
 #include <poll.h>
-#include <fcntl.h>
-#include <cstring>
+#include <sys/time.h>
+
 #include <netdb.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <cassert>
-#include <queue>
-#include <map>
-#include <utility>
-#include <sys/time.h>
+
 #include <memory>
-#include <utility>
-#include <algorithm>
+#include <string>
+#include <cstring>
 #include <cctype>
+#include <cassert>
+
+#include <algorithm>
+#include <map>
+#include <vector>
+#include <queue>
+#include <utility>
 
 #include "communication.h"
 #include "config.h"
@@ -223,6 +226,18 @@ public:
 std::map<size_t, ClientConnection> connections;
 // NOTE Number of active clients can be extracted by `connections.size()`.
 
+/**
+ * @brief Checks if timeout occured.
+ * @param tv The timeval to check.
+ * @return true if the timeval is nonpositive, false otherwise.
+ */
+bool is_timeout_expired(const timeval &tv) {
+    return tv.tv_sec < 0 || (tv.tv_sec == 0 && tv.tv_usec <= 0);
+}
+
+/**
+ * @brief The comparison function for ModifiableIdxTvPriorityQueue.
+ */
 auto cmp = [](const std::pair<size_t, timeval> &a, const std::pair<size_t, timeval> &b) {
     if (a.second.tv_sec != b.second.tv_sec) {
         return a.second.tv_sec > b.second.tv_sec;
@@ -232,11 +247,124 @@ auto cmp = [](const std::pair<size_t, timeval> &a, const std::pair<size_t, timev
     return a.first > b.first;
 };
 
-std::priority_queue<
-    std::pair<size_t, timeval>,
-    std::vector<std::pair<size_t, timeval>>,
-    decltype(cmp)
-    > timeouts(cmp);
+/**
+ * @brief A modifiable priority queue for managing timeouts.
+ * 
+ * This queue stores pairs of `<size_t index, timeval tv>` where
+ * `index` is the index of the client in `poll_descriptors` and
+ * `tv` is time left to timeout. 
+ */
+class ModifiableIdxTvPriorityQueue {
+private:
+    using Pair = std::pair<size_t, timeval>;
+    std::vector<Pair> data;
+
+public:
+    void push(const Pair& p) {
+        data.push_back(p);
+        std::push_heap(data.begin(), data.end(), cmp);
+    }
+
+    const Pair& top() const {
+        return data.front();
+    }
+
+    void pop() {
+        std::pop_heap(data.begin(), data.end(), cmp);
+        data.pop_back();
+    }
+
+    bool empty() const {
+        return data.empty();
+    }
+
+    size_t size() const {
+        return data.size();
+    }
+
+    void emplace(size_t id, timeval tv) {
+        data.emplace_back(id, tv);
+        std::push_heap(data.begin(), data.end(), cmp);
+    }
+
+    /**
+     * @brief Updates the timeouts in the queue by subtracting the given timeval.
+     * 
+     * This function iterates through all elements in the queue and
+     * subtracts the given timeval from each element's timeout.
+     * 
+     * @param tv The timeval to subtract from each element's timeout.
+     * @note This function requires to call `handle_timeouts` afterwards.
+     */
+    void update_timeouts(timeval tv) {
+        const time_t sec = tv.tv_sec;
+        const suseconds_t usec = tv.tv_usec;
+
+        for (auto &el : data) {
+            auto &eltv = el.second;
+
+            eltv.tv_sec -= sec;
+            eltv.tv_usec -= usec;
+
+            if (eltv.tv_usec < 0) {
+                eltv.tv_sec -= 1;
+                eltv.tv_usec += 1000000;
+            }
+        }
+    }
+
+    /**
+     * @brief Removes all expired timeouts from the queue.
+     *
+     * Iterates through the priority queue and removes all
+     * elements whose timeout has expired.
+     * 
+     * @note This function should be called after handling all
+     *       expired timeouts to keep the queue up to date and
+     *       prevent processing the same timeout multiple times.
+     */
+    void clear_timeouts() {
+        while (!empty() && is_timeout_expired(top().second)) {
+            pop();
+        }
+    }
+
+    /**
+     * @brief Executes the given function for each element in the queue.
+     * @param f The function to apply to each element.
+     * @note Function `f` should not change the queue structure.
+     */
+    template<typename Func>
+    void for_each(Func f) const {
+        for (auto& el : data)
+            f(el);
+    }
+
+    /**
+     * @brief Executes a function for each element in the queue while a predicate is true.
+     *
+     * Iterates over all elements in the queue. For each element, the predicate `pred` is called.
+     * If `pred(element.second)` returns true, the function `f` is executed for that element.
+     * Iteration stops at the first element for which the predicate returns false.
+     *
+     * @tparam Predicate Callable returning bool, used to test each element.
+     * @tparam Func Callable to execute for each element while the predicate is true.
+     * @param pred Predicate function to test each element's timeval structure.
+     * @param f Function to apply to each element while pred(element) is true.
+     *
+     * @note The function `f` should not modify the structure of the queue.
+     */
+    template<typename Predicate, typename Func>
+    void for_each_while(Predicate pred, Func f) const {
+        for (auto &el : data) {
+            if (!pred(el.second)) break;
+            f(el);
+        }
+    }
+};
+
+/** Priority queue of timeouts for clients. */
+ModifiableIdxTvPriorityQueue timeouts;
 
 /** Indexes of sockets awaiting for new clients. */
 constexpr size_t new_ipv4_clt_idx = 0;
@@ -436,6 +564,9 @@ public:
                 tga::net::get_ip(conn.get_addr()),
                 tga::net::get_port(conn.get_addr()),
                 conn.get_client_id());
+            
+            // Send Coeff
+            // TODO Implement
         }
     }
 };
@@ -627,10 +758,87 @@ size_t poll_structure_size() {
     return poll_descriptors.size();
 }
 
+/**
+ * @brief Updates all client timeouts by the elapsed time since last call.
+ *
+ * This function calculates the time difference since the last call
+ * and subtracts it from the timeout values of all clients in the priority queue.
+ * It should be called periodically (e.g., once per event loop iteration)
+ * to ensure that client timeouts are properly decremented as time passes.
+ *
+ * @note This function does not handle expired timeouts itself - after calling it,
+ *       you should call a function that processes clients whose timeouts have expired
+ *       (i.e. `handle_timeouts()`).
+ */
 void update_timeouts() {
-    // TODO Implement
+    timeval current_time;
+    if (gettimeofday(&current_time, nullptr) < 0) {
+        tga::io::log::err::error("gettimeofday");
+        exit(1);
+    }
+
+    // Initialize `previous_time` on first call.
+    static timeval previous_time = current_time;
+
+    timeval diff = {
+        previous_time.tv_sec - current_time.tv_sec,
+        previous_time.tv_usec - current_time.tv_usec
+    };
+    timeouts.update_timeouts(diff);
+
+    previous_time = current_time;
 }
 
+// NOTE Should be called after `update_timeouts`.
+void handle_timeouts() {
+    // Iteruj przez wszystkie elementy, których timeout minął.
+    
+    auto _handle_timeout = [](const std::pair<size_t, timeval> &el) {
+        size_t idx = el.first;
+
+        auto &conn = connections.at(idx);
+        auto timeout_meaning = conn.getTimeoutMeaning();
+
+        if (timeout_meaning == TimeoutMeaning::NO_MESSAGE_RECEIVED) {
+            // TODO Napisać taki log
+            // tga::io::log::server::info::timeout(
+            //     conn.get_client_id(),
+            //     conn.get_addr(),
+            //     tv);
+            
+            /** NOTE
+             * For now the only possibility of timeout meaning the expected
+             * message did not arrive is when the client did not send HELLO message
+             * within the expected time after establishing connection, to which
+             * server responds with closing the connection with the client.
+             */
+            close_client_connection(idx);
+        } else if (timeout_meaning == TimeoutMeaning::SEND_DELAY) {
+            // Send the delayed message.
+            auto msg = conn.getTimeoutMessage();
+            assert(msg.has_value()); // Should not be empty, if timeout meaning is SEND_DELAY.
+            
+            if (msg) {
+                // TODO Napisać taki log, jeśli jest wymagany
+                // tga::io::log::info::server::send_message(
+                //     msg->serialize(),
+                //     conn.get_client_id(),
+                //     conn.get_addr());
+                // TODO Send the message to the client.
+            }
+        }
+    };
+
+    timeouts.for_each_while(is_timeout_expired, _handle_timeout);
+    timeouts.clear_timeouts(); // Clear the expired timeouts from the queue.
+}
+
+/**
+ * @brief Checks if a connection exists for the given index.
+ * @param idx The index of the connection in the poll descriptors.
+ * @return true if the connection exists, false otherwise.
+ * @note This function assumes, that `idx` is a valid index in `poll_descriptors`.
+ */
 bool connection_exists(const size_t idx) {
     assert(idx < poll_descriptors.size());
     return connections.find(idx) != connections.end();
