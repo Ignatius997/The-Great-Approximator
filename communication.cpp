@@ -97,13 +97,12 @@ protected:
     size_t buffer_len = 0; // Length of the buffer, i.e., how many valid bytes are currently in the buffer.
     size_t buffer_pos = 0; // Position in the buffer, i.e., how many bytes were already written to the buffer.
 
-    bool baptised_ = false; // Whether the client has been baptised (i.e., has a name).
+    size_t penalty = 0; // Penalty for the client.
 
     std::optional<TimeoutMeaning> timeout_meaning = std::nullopt; // Meaning of the timeout, if it occurred.
     std::optional<MsgPtr> timeout_message = std::nullopt; // Message to send after the timeout, if it occurred.
 
-    // NOTE na razie unused.
-    CommunicationPhase phase = CommunicationPhase::START;
+    CommunicationPhase phase = CommunicationPhase::PRE_GAME;
     // FIXME Po pierwsze magiczna stała
     // FIXME Po drugie, to czy nie można tego zrobić w wektorze?
     Rational approximations[10001] = {Rational("0")}; // Approximations for the polynomial, indexed by point (0 to 10000).
@@ -116,8 +115,9 @@ public:
      * @brief Get the client ID.
      * @return The client ID as a string.
      */
+    [[nodiscard]]
     std::string get_client_id() const {
-        assert(baptised_);
+        assert(phase != CommunicationPhase::PRE_GAME);
         return client_id;
     }
 
@@ -125,32 +125,26 @@ public:
      * @brief Get the address of the client.
      * @return The address of the client as a SockAddrVariant.
      */
-    SockAddrVariant get_addr() const {
-        return addr;
-    }
+    [[nodiscard]]
+    SockAddrVariant get_addr() const { return addr; }
+
+    [[nodiscard]]
+    CommunicationPhase get_phase() const { return phase; }
 
     /**
      * @brief Give name to the already connected, but unnamed client.
      */
     void baptise(const std::string &name) {
-        assert(!baptised_);
+        assert(phase == CommunicationPhase::PRE_GAME);
         client_id = name;
-        baptised_ = true;
-    }
-
-    /**
-     * @brief Returns whether the client has been baptised.
-     * @return true if the client has a name, false otherwise.
-     */
-    [[nodiscard]]
-    bool baptised() const {
-        return baptised_;
+        phase = CommunicationPhase::WAITING_FOR_PUT;
     }
 
     /**
      * @brief Returns pointer to the client's buffer.
      * @return pointer to the client's buffer.
      */
+    [[nodiscard]]
     char *get_buffer() {
         return buffer;
     }
@@ -161,7 +155,7 @@ public:
      * @param value The value to add to the approximation (-5.0 to 5.0).
      * @note The function assumes, that point <- 10^4 and |value| <= 5.0.
      */
-    void approxAdd(size_t point, double value) {
+    void approx_add(size_t point, double value) {
         assert(point <= 10000);
         assert(value >= -5.0 && value <= 5.0);
         approximations[point] += Rational(value);
@@ -171,7 +165,7 @@ public:
      * @brief Sets the meaning of the timeout that occurred for the client.
      * @param meaning The meaning of the timeout.
      */
-    void setTimeoutMeaning(const TimeoutMeaning meaning) {
+    void set_timeout_meaning(const TimeoutMeaning meaning) {
         timeout_meaning = meaning;
     }
 
@@ -180,7 +174,7 @@ public:
      * @return The meaning of the timeout, or std::nullopt if no timeout occurred.
      */
     [[nodiscard]]
-    std::optional<TimeoutMeaning> getTimeoutMeaning() const {
+    std::optional<TimeoutMeaning> get_timeout_meaning() const {
         return timeout_meaning;
     }
 
@@ -189,7 +183,7 @@ public:
      * @param msg The message to send after the timeout.
      * @note `msg` is moved into the object, so it should not be used after this call.
      */
-    void setTimeoutMessage(MsgPtr msg) {
+    void set_timeout_message(MsgPtr msg) {
         timeout_message = std::move(msg);
     }
 
@@ -199,24 +193,38 @@ public:
      * @note The message is moved from the object, so it should not be used after this call.
      */
     [[nodiscard]]
-    std::optional<MsgPtr> getTimeoutMessage() {
+    std::optional<MsgPtr> get_timeout_message() {
         auto msg = std::move(timeout_message);
         timeout_message = std::nullopt; // Clear the message after moving it.
         return msg;
     }
 
-    std::vector<Rational> getApproximations() const {
+    std::vector<Rational> get_approximations() const {
         auto end = approximations + tga::args::server::K();
         return std::vector<Rational>(approximations, end);
     }
 
-    timeval getStateDelay() const {
-        time_t lowercase_count = std::count_if(
+    timeval get_state_delay() const {
+        assert(phase != CommunicationPhase::PRE_GAME);
+
+        static time_t lowercase_count = std::count_if(
             client_id.begin(), client_id.end(),
             [](unsigned char c) { return std::islower(c); }
         );
-        return { .tv_sec = lowercase_count, .tv_usec = 0 };
+        static timeval tv = {
+            .tv_sec = lowercase_count,
+            .tv_usec = 0
+        };
+        return tv;
     }
+
+    /**
+     * @brief Increases the penalty for the client by given amount.
+     * @param pen The count of penalty points to impose.
+     * @note For now the only time, when penalty is imposed, is when PUT
+     *       is sent in a wrong phase of communication.
+     */
+    void impose_penalty(const size_t pen) { penalty += pen; }
 };
 
 /**
@@ -552,22 +560,24 @@ public:
         ClientConnection &conn = connections.at(idx);
         HelloMessage hello_msg = dynamic_cast<HelloMessage &>(*msg);
 
-        if (conn.baptised()) {
+        if (conn.get_phase() != CommunicationPhase::PRE_GAME) {
+            // Client is already baptised, but sent HELLO message.
             tga::io::log::err::message(hello_msg.serialize(),
                                     conn.get_client_id(),
                                     conn.get_addr());
             rinfo.err = ReceivedDataStatus::INVALID_TYPE;
-        } else {
-            // Baptise client with given ID.
-            conn.baptise(hello_msg.getPlayerID());
-            tga::io::log::info::server::client_known(
-                tga::net::get_ip(conn.get_addr()),
-                tga::net::get_port(conn.get_addr()),
-                conn.get_client_id());
-            
-            // Send Coeff
-            // TODO Implement
+            return; // Ignore the message
         }
+
+        // Baptise client with given ID.
+        conn.baptise(hello_msg.getPlayerID());
+        tga::io::log::info::server::client_known(
+            tga::net::get_ip(conn.get_addr()),
+            tga::net::get_port(conn.get_addr()),
+            conn.get_client_id());
+        
+        // Send Coeff
+        // TODO Implement
     }
 };
 
@@ -591,6 +601,23 @@ public:
         const size_t point = put_msg.getPoint();
         const double value = (double) put_msg.getValue();
 
+        // Check, if PUT message is sent in between
+        // receiving earlier PUT and sending PUT response.
+        if (conn.get_phase() != CommunicationPhase::WAITING_FOR_PUT) {
+            tga::io::log::err::message(
+                put_msg.serialize(),
+                conn.get_client_id(),
+                conn.get_addr());
+            rinfo.err = ReceivedDataStatus::INVALID_TYPE;
+            
+            if (conn.get_phase() == CommunicationPhase::SENDING_PUT_RESPONSE) {
+                // Immediately send PENALTY Message and impose a penalty.
+                // TODO Implement
+                
+                conn.impose_penalty(20); // FIXME Magiczna stała
+            }
+        }
+
         // Check, if point or value is out of range.
         if (point > tga::args::server::K() || value < -5.0 || value > 5.0) {
             rinfo.err = ReceivedDataStatus::INVALID_VALUE;
@@ -602,11 +629,11 @@ public:
             // Plan sending BAD_PUT Message.
             MsgPtr timeout_msg = std::make_unique<BadPutMessage>(
                                         point, put_msg.getValue());
-            conn.setTimeoutMeaning(TimeoutMeaning::SEND_DELAY);
-            conn.setTimeoutMessage(std::move(timeout_msg));
+            conn.set_timeout_meaning(TimeoutMeaning::SEND_DELAY);
+            conn.set_timeout_message(std::move(timeout_msg));
             timeouts.emplace(idx, bad_put_delay);
         } else { // Correct PUT message.
-            conn.approxAdd(point, value);
+            conn.approx_add(point, value);
             // TODO Napisać taki log
             // tga::io::log::info::server::put(
             //     conn.get_client_id(),
@@ -615,10 +642,10 @@ public:
             //     value);
             
             // Plan sending STATE Message.
-            MsgPtr timeout_msg = std::make_unique<StateMessage>(conn.getApproximations());
-            conn.setTimeoutMeaning(TimeoutMeaning::SEND_DELAY);
-            conn.setTimeoutMessage(std::move(timeout_msg));
-            timeouts.emplace(idx, conn.getStateDelay());
+            MsgPtr timeout_msg = std::make_unique<StateMessage>(conn.get_approximations());
+            conn.set_timeout_meaning(TimeoutMeaning::SEND_DELAY);
+            conn.set_timeout_message(std::move(timeout_msg));
+            timeouts.emplace(idx, conn.get_state_delay());
         }
     }
 };
@@ -711,23 +738,30 @@ MsgHandlerPtr make_handler(const std::string &msg_type) {
 void handle_received_message(const size_t idx, const size_t len_received, ReceiveInfo &rinfo) {
     assert(len_received > 0);
 
+    // FIXME Trzeba uwzględnić wścibski przypadek, kiedy mamy dwie wiadomości w buforze
     const char *buffer = connections.at(idx).get_buffer();
     MsgPtr msg = tga::msg::deserialize_message(buffer, len_received, rinfo);
     const auto &conn = connections.at(idx);
 
-    
     if (msg == nullptr || rinfo.err != ReceivedDataStatus::SUCCESS) { // Invalid message.
         std::string message_text(buffer, len_received);
-        auto player_id = conn.baptised() ? conn.get_client_id() : "UNKNOWN";
         auto addr = conn.get_addr();
+        std::string player_id = "UNKNOWN";
+        if (conn.get_phase() != CommunicationPhase::PRE_GAME) {
+            player_id = conn.get_client_id();
+        }
+
         tga::io::log::err::message(message_text, player_id, addr);
         
-        if (!conn.baptised()) close_client_connection(idx);
+        if (conn.get_phase() == CommunicationPhase::PRE_GAME) {
+            close_client_connection(idx);
+        }
     } else { // Valid message.
         if (tga::config::server) {
             // First message from the client MUST BE a correct HELLO message.
             // Otherwise, the connection with the client has to be closed.
-            if (!conn.baptised() && msg->messageType() != "HELLO") {
+            if (conn.get_phase() == CommunicationPhase::PRE_GAME &&
+                    msg->messageType() != "HELLO") {
                 tga::io::log::err::message(
                     msg->serialize(),
                     conn.get_client_id(),
@@ -797,7 +831,7 @@ void handle_timeouts() {
         size_t idx = el.first;
 
         auto &conn = connections.at(idx);
-        auto timeout_meaning = conn.getTimeoutMeaning();
+        auto timeout_meaning = conn.get_timeout_meaning();
 
         if (timeout_meaning == TimeoutMeaning::NO_MESSAGE_RECEIVED) {
             // TODO Napisać taki log
@@ -815,7 +849,7 @@ void handle_timeouts() {
             close_client_connection(idx);
         } else if (timeout_meaning == TimeoutMeaning::SEND_DELAY) {
             // Send the delayed message.
-            auto msg = conn.getTimeoutMessage();
+            auto msg = conn.get_timeout_message();
             assert(msg.has_value()); // Should not be empty, if timeout meaning is SEND_DELAY.
             
             if (msg) {

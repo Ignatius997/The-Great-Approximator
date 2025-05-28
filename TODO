@@ -10,6 +10,19 @@ ERROR
 Wysyłanie wiadomości przez serwera
 ERROR
 
+Wysyłanie wiadomości przez serwera
+    Trzeba ustawić events na POLLOUT w poll_descriptors i zapisać wiadomość do przesłania w clients_connection.
+
+TODO Czy istnieje opcja nadpisywania wiadomości do przesłania (z opóźnieniem lub bez) danemu klientowi?
+    Nie: Jeśli drugi raz otrzymamy HELLO (zachęcając serwer do przesłania COEFFS i nadpisania wiadomości do przesłania),
+    to zostanie to wykryte.
+    Nie: Jeśli otrzymamy PUT przed wysłaniem odpowiedzi na poprzedniego PUT-a, to zostanie to wykryte.
+    TODO Zaimplementować to z użyciem CommunicationPhase
+
+TODO Czy możliwe jest, że w jednym odebranym komunikacie będzie >1 wiadomość, np. gdy klient szybko wyśle 2 wiadomości?
+    TAK!
+    Wtedy w sumie wszystko działa, ale trzeba to jeszcze obsłużyć u serwera.
+
 TODO Widać lukę w MessageHandler: Klienmtowi nie potrzebne jest idx, a zatem mamy dwie klasy Handler-ów: klientowi i serwerowi.
 TODO Coraz bardziej widać, że trzeba będzie zrobić oddzielne pliki dla klienta i serwera.
 
@@ -116,4 +129,4 @@ NOTE DONE:
 20. Przenieść część net do communication, a mianowicie wszystko globalne do communication, a czesc prywatnych zrobic globalnych. DONE
 21. Handle-owanie wiadomości od klienta. DONE
 22. Logika timeout-ów. DONE
-23.
+23. Logika CommunicationPhase. DONE

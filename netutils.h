@@ -36,14 +36,15 @@ namespace net {
 
 using SockAddrVariant = std::variant<sockaddr_in, sockaddr_in6>;
 
-// NOTE Na razie unused
 /**
  * @brief This enum determines in which phase is currently
  * the communication between client and server.
  */
 enum CommunicationPhase {
-    // TODO Implement
-    START
+    PRE_GAME, // Already connected, waiting for HELLO message.
+    WAITING_FOR_PUT,  // HELLO received, game is in progress, waiting for PUT messages.
+    SENDING_PUT_RESPONSE, // PUT received, sending response to the client.
+    END // Game is over, sending SCORING message to the client.
 };
 
 enum ReceivedDataStatus {
