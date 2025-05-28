@@ -7,17 +7,14 @@ sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
 i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
 
 ERROR
-Wysyłanie wiadomości przez serwera
+Wysyłanie wiadomości przez serwer
+Obczaić FIXME przy odbieraniu poll-a z POLLOUT w communication.cpp i generalnmie interpretowanie dziwnych wsynikorw write/read
 ERROR
 
-Wysyłanie wiadomości przez serwera
+Wysyłanie wiadomości przez serwer
     Trzeba ustawić events na POLLOUT w poll_descriptors i zapisać wiadomość do przesłania w clients_connection.
 
-TODO Czy istnieje opcja nadpisywania wiadomości do przesłania (z opóźnieniem lub bez) danemu klientowi?
-    Nie: Jeśli drugi raz otrzymamy HELLO (zachęcając serwer do przesłania COEFFS i nadpisania wiadomości do przesłania),
-    to zostanie to wykryte.
-    Nie: Jeśli otrzymamy PUT przed wysłaniem odpowiedzi na poprzedniego PUT-a, to zostanie to wykryte.
-    TODO Zaimplementować to z użyciem CommunicationPhase
+TODO Jak to jest z buforowaniem wysyłania? Czy klient może odczytać np. pół komunikatu?
 
 TODO Czy możliwe jest, że w jednym odebranym komunikacie będzie >1 wiadomość, np. gdy klient szybko wyśle 2 wiadomości?
     TAK!
@@ -25,6 +22,7 @@ TODO Czy możliwe jest, że w jednym odebranym komunikacie będzie >1 wiadomoś�
 
 TODO Widać lukę w MessageHandler: Klienmtowi nie potrzebne jest idx, a zatem mamy dwie klasy Handler-ów: klientowi i serwerowi.
 TODO Coraz bardziej widać, że trzeba będzie zrobić oddzielne pliki dla klienta i serwera.
+TODO Obczaić pierwszy podpunkt pytania na forum zadanego w czwartek, 22 maja 2025, 21:05
 
 TODO Komunikacja:
     a) setup server-DONE client-DONE
@@ -42,6 +40,8 @@ TODO Komunikacja:
 TODO Operatory porównania w netutils dla sockaddr_in i sockaddr_in6 są dość kontrowersyjne, bo porównują rodzinę (która chyba powinna być taka sama).
 
 TODO Może zoptymalizować tga::comm::server::clear_revents()
+
+TODO Metody get_message_type powinny być const, albo powinny to być po prostu const pola
 
 18. Zamień te gettery typu `requests_handled` na `get_requests_handled`.
 19. Czy na pewno zrobiono walidację argumentów w ProgramArgs?
@@ -80,7 +80,6 @@ Q12. ReceiveInfo
     Jak widać na przykładzie PutHandler-a, ReceiveInfo nie powinno zawierać jedynie informacji
     o tym, czy się udało odczytać wszystko poprawnie, ale również o tym, co poszło nie tak.
     enum { SUCCESS, INVALID_MSG_TYPE, INVALID_VALUE, INVALID_LENGTH, INVALID_FORMAT}
-
 Q13. Timeouty
     Timeouty w serwerze mają dwa znaczenia:
         a) minął czas oczekiwania na wiadomość od klienta
@@ -100,6 +99,10 @@ Q13. Timeouty
     i zakładać, że obsługa wszystkich zdarzeń zajmie <ε. Należy odnotować, że jeśli wywołalibyśmy gettimeofday po
     obsłużeniu wszystkich zdarzeń, to mogłoby się okazać, że minął czas timeout-u i byłoby to obsłużenia.
     Możnaby to co prawda zoptymalizować, ale jest to strzelanie z armaty do wróbla. 
+Q14 Czy istnieje opcja nadpisywania wiadomości do przesłania (z opóźnieniem lub bez) danemu klientowi?
+    Nie: Jeśli drugi raz otrzymamy HELLO (zachęcając serwer do przesłania COEFFS i nadpisania wiadomości do przesłania),
+    to zostanie to wykryte.
+    Nie: Jeśli otrzymamy PUT przed wysłaniem odpowiedzi na poprzedniego PUT-a, to zostanie to wykryte.
 
 NOTE DONE:
 8. MOŻNA zrobić te argsy ładniejsze: zamiast dwóch plików .cpp zrobić jeden

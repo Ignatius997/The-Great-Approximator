@@ -38,10 +38,10 @@ int main(int argc, char* argv[]) {
         // TODO Maybe handle Ctrl-C like in echo-server-nonblocking.c
 
         int poll_status = poll_events();
-        if (poll_status < 0) { // fail
+        if (poll_status < 0) { // Fail.
             tga::io::log::err::error("poll");
             exit(1);
-        } else if (poll_status == 0) { // timeout
+        } else if (poll_status == 0) { // Timeout.
             update_timeouts();
             handle_timeouts();
         } else { // success

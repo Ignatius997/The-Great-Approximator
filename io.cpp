@@ -189,26 +189,25 @@ void received_state(const std::vector<std::string>& state) {
 namespace file {
 
 namespace {
-    // FIXME Make `current_line` thread-safe
     std::string coeffs_file; // File with coefficients
     size_t current_line = 0; // Line to be read next.
 }
 
 
-// FIXME Należy zadbać o to, żeby nie wykonywano tego jednocześnie przez wiele wątków/procesów.
 // NOTE Not tested
 /**
  * @brief Reads coefficients from a file named "coeffs.txt".
  * 
  * This function attempts to open file with coefficients and read from it one line
- * storing it into a string. If the file cannot be opened, it throws a runtime error.
+ * storing it into a string. If the file cannot be opened, it logs an error and exits the program.
  * 
- * @return A string containing coefficients.
+ * @return A string containing coefficients in "$c_0 $c_2 ... $c_N" format.
  */
 std::string read_coeffs() {
     std::ifstream file(coeffs_file);
     if (!file.is_open()) {
         tga::io::log::err::error("Failed to open" + coeffs_file);
+        exit(1);
     }
 
     std::string line;

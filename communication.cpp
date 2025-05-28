@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <sys/time.h>
+#include <errno.h>
 
 #include <netdb.h>
 #include <fcntl.h>
@@ -94,7 +95,7 @@ protected:
     SockAddrVariant addr; // Address of the client.
 
     char buffer[buffer_size] = {0}; // Buffer for receiving and sending messages from the client.
-    size_t buffer_len = 0; // Length of the buffer, i.e., how many valid bytes are currently in the buffer.
+    size_t buffer_len = 0; // Length of the buffer, i.e., how many valid bytes are currently in the buffer. Used for sending messages.
     size_t buffer_pos = 0; // Position in the buffer, i.e., how many bytes were already written to the buffer.
 
     size_t penalty = 0; // Penalty for the client.
@@ -128,8 +129,25 @@ public:
     [[nodiscard]]
     SockAddrVariant get_addr() const { return addr; }
 
+    /**
+     * @brief Get the communication phase of the client.
+     * @return The communication phase of the client.
+     */
     [[nodiscard]]
     CommunicationPhase get_phase() const { return phase; }
+
+    /**
+     * @brief Sets the communication phase for the client.
+     * @param new_phase The new communication phase.
+     */
+    void set_phase(const CommunicationPhase new_phase) {
+        assert(new_phase != CommunicationPhase::PRE_GAME);
+        phase = new_phase;
+
+        // Just in case.
+        buffer_pos = 0;
+        buffer_len = 0;
+    }
 
     /**
      * @brief Give name to the already connected, but unnamed client.
@@ -147,6 +165,44 @@ public:
     [[nodiscard]]
     char *get_buffer() {
         return buffer;
+    }
+
+    /**
+     * @brief Returns the length of the client's buffer,
+     *        i.e. number of valid bytes in the buffer.
+     * @return The length of the client's buffer.
+     */
+    [[nodiscard]]
+    size_t get_buffer_len() const {
+        return buffer_len;
+    }
+
+    /**
+     * @brief Sets the length of the client's buffer.
+     * @param len The new length of the client's buffer.
+     */
+    void set_buffer_len(size_t len) {
+        assert(len <= buffer_size);
+        buffer_len = len;
+    }
+
+    /**
+     * @brief Returns the position in the client's buffer,
+     *        i.e. how many bytes were already written to the buffer.
+     * @return The position in the client's buffer.
+     */
+    [[nodiscard]]
+    size_t get_buffer_pos() const {
+        return buffer_pos;
+    }
+
+    /**
+     * @brief Sets the position in the client's buffer.
+     * @param pos The new position in the client's buffer.
+     */
+    void set_buffer_pos(size_t pos) {
+        assert(pos <= buffer_len);
+        buffer_pos = pos;
     }
 
     /**
@@ -520,6 +576,47 @@ int accept_new_client(const int family, SockAddrVariant &client_addr) {
     return client_fd;
 }
 
+void prepare_to_send(const size_t idx, MsgPtr msg) {
+    ClientConnection &conn = connections.at(idx);
+    assert(conn.get_phase() != CommunicationPhase::PRE_GAME);
+
+    // Prepare buffer
+    const std::string serialized_msg = msg->serialize();
+    const size_t msg_len = serialized_msg.size();
+    assert(msg_len < buffer_size);
+    std::memcpy(conn.get_buffer(), serialized_msg.data(), msg_len);
+
+    conn.set_buffer_len(msg_len);
+    conn.set_buffer_pos(0);
+    poll_descriptors.at(idx).events = POLLOUT; // Switch to writing.
+}
+
+// NOTE Not tested.
+/**
+ * @brief Converts a string of coefficients into a vector of Rational numbers.
+ * 
+ * This function takes a string containing coefficients separated by spaces
+ * and converts it into a vector of Rational objects.
+ * 
+ * @param coeffs_str The string containing coefficients in format of "$c_0 $c_1 ... $c_N".
+ * @return A vector of Rational objects representing the coefficients.
+ */
+std::vector<Rational> convert_coeffs_string_to_vector(std::string coeffs_str) {
+    std::vector<Rational> coeffs_vec;
+    size_t start = 0;
+
+    while (start < coeffs_str.size()) {
+        size_t end = start;
+        while (end < coeffs_str.size() && !std::isspace(coeffs_str[end])) ++end;
+        coeffs_vec.emplace_back(coeffs_str.substr(start, end - start));
+        start = end + 1; // Move to the next coefficient, skipping the space.
+    }
+
+    return coeffs_vec;
+}
+
+// ==== Message Handlers ====
+
 class MessageHandler {
 public:
     virtual ~MessageHandler() = default;
@@ -576,8 +673,11 @@ public:
             tga::net::get_port(conn.get_addr()),
             conn.get_client_id());
         
-        // Send Coeff
-        // TODO Implement
+        // Prepare for sending COEFF.
+        std::string coeffs_str = tga::io::file::read_coeffs();
+        auto coeffs_vec = convert_coeffs_string_to_vector(std::move(coeffs_str));
+        auto coeff_msg = std::make_unique<CoeffMessage>(std::move(coeffs_vec));
+        prepare_to_send(idx, std::move(coeff_msg));
     }
 };
 
@@ -611,9 +711,9 @@ public:
             rinfo.err = ReceivedDataStatus::INVALID_TYPE;
             
             if (conn.get_phase() == CommunicationPhase::SENDING_PUT_RESPONSE) {
-                // Immediately send PENALTY Message and impose a penalty.
-                // TODO Implement
-                
+                // Prepare for sending PENALTY and impose a penalty.
+                auto penalty_msg = std::make_unique<PenaltyMessage>(point, value);
+                prepare_to_send(idx, std::move(penalty_msg));                
                 conn.impose_penalty(20); // FIXME Magiczna stała
             }
         }
@@ -633,6 +733,9 @@ public:
             conn.set_timeout_message(std::move(timeout_msg));
             timeouts.emplace(idx, bad_put_delay);
         } else { // Correct PUT message.
+            // Check, if client is in the correct phase.
+            if (conn.get_phase() != CommunicationPhase::WAITING_FOR_PUT) return;
+
             conn.approx_add(point, value);
             // TODO Napisać taki log
             // tga::io::log::info::server::put(
@@ -973,15 +1076,43 @@ bool new_ipv6_clients() {
  *       but maybe not for THIS client.
  */
 void handle_poll_event(const size_t idx, ReceiveInfo &rinfo) {
-    if ((poll_descriptors.at(idx).revents & (POLLIN | POLLERR)) != 0) {
-        ssize_t len_received = read(poll_descriptors.at(idx).fd, connections.at(idx).get_buffer(), 0);
-        if (len_received < 0) tga::io::log::err::error("read from existing connection");
-        else if (len_received == 0) close_client_connection(idx);
-        else handle_received_message(idx, (size_t) len_received, rinfo);
+    pollfd &poll_fd = poll_descriptors.at(idx);
+
+    // TODO To w końcu z POLLERR czy bez?
+    if ((poll_fd.revents & (POLLIN | POLLERR)) != 0) {
+        ssize_t len_received = read(poll_fd.fd, connections.at(idx).get_buffer(), 0);
+        if (len_received < 0) {
+            tga::io::log::err::error("read from existing connection");
+            // TODO Co robić w takiej sytuacji?
+        } else if (len_received == 0) {
+            close_client_connection(idx);
+        } else handle_received_message(idx, (size_t) len_received, rinfo);
     }
 
-    if ((poll_descriptors.at(idx).revents & POLLOUT) != 0) {
-        // TODO Implement
+    if ((poll_fd.revents & POLLOUT) != 0) {
+        ClientConnection &conn = connections.at(idx);
+        const char *buffer = conn.get_buffer();
+        size_t buffer_pos = conn.get_buffer_pos();
+        size_t buffer_len = conn.get_buffer_len();
+
+        ssize_t sent_bytes = write(poll_fd.fd,
+                                buffer + buffer_pos,
+                                buffer_len - buffer_pos);
+
+        if (sent_bytes < 0) {
+            tga::io::log::err::error("write to existing connection");
+
+            // FIXME To wydaje się baardzo shady, sprawdzić w internecie jak interpretować len_received <0.
+            if (errno == EPIPE || errno == ECONNRESET) {
+                close_client_connection(idx);
+            }
+        } else {
+            conn.set_buffer_pos(buffer_pos + sent_bytes);
+            if (conn.get_buffer_pos() == buffer_len) {
+                poll_fd.events = POLLIN; // Switch to reading.
+                conn.set_phase(CommunicationPhase::WAITING_FOR_PUT); // FIXME Być może update_phase() ...
+            }
+        }
     }
 }
 
