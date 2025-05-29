@@ -1083,8 +1083,8 @@ void handle_poll_event(const size_t idx, ReceiveInfo &rinfo) {
         ssize_t len_received = read(poll_fd.fd, connections.at(idx).get_buffer(), 0);
         if (len_received < 0) {
             tga::io::log::err::error("read from existing connection");
-            // TODO Co robić w takiej sytuacji?
-        } else if (len_received == 0) {
+            close_client_connection(idx);
+        } else if (len_received == 0) { // EOF, client disconnected
             close_client_connection(idx);
         } else handle_received_message(idx, (size_t) len_received, rinfo);
     }
@@ -1101,9 +1101,7 @@ void handle_poll_event(const size_t idx, ReceiveInfo &rinfo) {
 
         if (sent_bytes < 0) {
             tga::io::log::err::error("write to existing connection");
-
-            // FIXME To wydaje się baardzo shady, sprawdzić w internecie jak interpretować len_received <0.
-            if (errno == EPIPE || errno == ECONNRESET) {
+            if (errno != EINTR) { // Unless interrupted by a signal.
                 close_client_connection(idx);
             }
         } else {

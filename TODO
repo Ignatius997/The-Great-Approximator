@@ -11,6 +11,9 @@ Wysyłanie wiadomości przez serwer
 Obczaić FIXME przy odbieraniu poll-a z POLLOUT w communication.cpp i generalnmie interpretowanie dziwnych wsynikorw write/read
 ERROR
 
+errno przy read dla wyniku -1:
+    Jesteśmy w trybie blokującym, więc nie sprawdzamy żadnych flag.
+
 Wysyłanie wiadomości przez serwer
     Trzeba ustawić events na POLLOUT w poll_descriptors i zapisać wiadomość do przesłania w clients_connection.
 
