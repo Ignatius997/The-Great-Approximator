@@ -241,17 +241,20 @@ namespace server {
  */
 unsigned M() {
     assert(parsed);
-    return static_cast<ServerArgs*>(args.get())->getM();
+    static size_t m = static_cast<ServerArgs*>(args.get())->getM();
+    return m;
 }
 
 unsigned N() {
     assert(parsed);
-    return static_cast<ServerArgs*>(args.get())->getN();
+    static size_t n = static_cast<ServerArgs*>(args.get())->getN();
+    return n;
 }
 
 unsigned K() {
     assert(parsed);
-    return static_cast<ServerArgs*>(args.get())->getK();
+    static size_t k = static_cast<ServerArgs*>(args.get())->getK();
+    return k;
 }
 
 } // namespace server

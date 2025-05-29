@@ -170,7 +170,7 @@ public:
         return "SCORING";
     }
 
-    // NOTE Check, if the order of players is correct.
+    // NOTE Check, if the order of players is correct in the for loop. I think yes.
     std::string messageContent() const override {
         std::string content;
 

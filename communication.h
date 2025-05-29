@@ -13,15 +13,15 @@ using tga::msg::Message;
 using tga::net::ReceiveInfo;
 
 namespace server {
-    size_t messages_to_receive();
+    size_t get_messages_to_receive();
     size_t poll_structure_size();
 
     void clear_revents();
     void update_timeouts();
     void handle_timeouts();
-    void handle_poll_event(const size_t idx, ReceiveInfo &rinfo);
+    void handle_poll_event(const size_t idx);
     void new_clients(const int family);
-    void end();
+    void send_scores();
     int poll_events();
 
     bool connection_exists(const size_t idx);

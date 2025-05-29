@@ -20,6 +20,7 @@
 #include <vector>
 #include <queue>
 #include <utility>
+#include <cmath>
 
 #include "communication.h"
 #include "config.h"
@@ -67,7 +68,6 @@ const std::string empty_string = ""; // Empty string for client ID.
 constexpr size_t buffer_size = (1 << 13); // 8 KiB
 std::vector<std::vector<char>> buffers; // Buffers for receiving messages from clients.
 
-size_t messages_to_receive_ = 0; // Number of messages to receive from clients.
 constexpr int socket_queue_len = 10; // FIXME Ulepszyć to?
 uint16_t port; // Stored in host byte order.
 int ipv4_socket_fd = -1;
@@ -104,10 +104,28 @@ protected:
     std::optional<MsgPtr> timeout_message = std::nullopt; // Message to send after the timeout, if it occurred.
 
     CommunicationPhase phase = CommunicationPhase::PRE_GAME;
+
+    // FIXME Magiczna stała
+    Rational coeffs[9] = {Rational("0")}; // Coefficients of the polynomial
     // FIXME Po pierwsze magiczna stała
     // FIXME Po drugie, to czy nie można tego zrobić w wektorze?
-    Rational approximations[10001] = {Rational("0")}; // Approximations for the polynomial, indexed by point (0 to 10000).
+    Rational client_approximations[10001] = {Rational("0")}; // Client's approximations for the polynomial, indexed by point (0 to 10000).
+    Rational server_approximations[10001] = {Rational("0")}; // Server's approximations for the polynomial, indexed by point (0 to 10000).
 
+    /**
+     * @brief Calculates the value of the polynomial at the given point idx.
+     * @param idx The point index (0 to K).
+     * @return The value of the polynomial at the given point as a Rational number.
+     */
+    Rational calculate_function_value(size_t x) const {
+        // Simply returns f(x) = c_0 + c_1 * x + c_2 * x^2 + ... + c_N * x^N
+        Rational result = Rational("0");
+        for (size_t exp = 0; exp < tga::args::server::N(); ++exp) {
+            result += coeffs[exp] * Rational(std::pow(static_cast<double>(x),
+                                                    static_cast<double>(exp)));
+        }
+        return result;
+    }
 
 public:
     ClientConnection(const SockAddrVariant &addr) : addr(addr) {}
@@ -205,6 +223,23 @@ public:
         buffer_pos = pos;
     }
 
+    std::vector<Rational> get_coeffs() const {
+        assert(phase != CommunicationPhase::PRE_GAME);
+        return std::vector<Rational>(coeffs, coeffs + tga::args::server::N());
+    }
+
+    /**
+     * @brief Sets the coefficients of the polynomial for the client.
+     * @param new_coeffs The coefficients to set.
+     */
+    void set_coeffs(std::vector<Rational> new_coeffs) {
+        assert(phase == CommunicationPhase::PRE_GAME);
+        assert(new_coeffs.size() == tga::args::server::N());
+        for (size_t i = 0; i < tga::args::server::N(); ++i) {
+            coeffs[i] = new_coeffs[i];
+        }
+    }
+
     /**
      * @brief Adds a value to the approximation for the given point.
      * @param point The point index (0 to 10000).
@@ -214,7 +249,7 @@ public:
     void approx_add(size_t point, double value) {
         assert(point <= 10000);
         assert(value >= -5.0 && value <= 5.0);
-        approximations[point] += Rational(value);
+        client_approximations[point] += Rational(value);
     }
 
     /**
@@ -255,9 +290,9 @@ public:
         return msg;
     }
 
-    std::vector<Rational> get_approximations() const {
-        auto end = approximations + tga::args::server::K();
-        return std::vector<Rational>(approximations, end);
+    std::vector<Rational> get_client_approximations() const {
+        auto end = client_approximations + tga::args::server::K();
+        return std::vector<Rational>(client_approximations, end);
     }
 
     timeval get_state_delay() const {
@@ -281,6 +316,40 @@ public:
      *       is sent in a wrong phase of communication.
      */
     void impose_penalty(const size_t pen) { penalty += pen; }
+
+    /**
+     * @brief Calculates the client's score.
+     *
+     * Computes the score as the sum of squared differences between the client's
+     * and server's approximations, plus the penalty. Assumes all server
+     * approximations are calculated and the phase is END.
+     *
+     * @return The calculated score as a Rational value.
+     */
+    [[nodiscard]]
+    Rational calculate_score() {
+        /** TODO
+         * Assert, that all server approximations are calculated.
+         * Here is a placeholder implementation
+         */
+        assert(phase == CommunicationPhase::END);
+
+        for (size_t i = 0; i <= tga::args::server::K(); ++i) {
+            server_approximations[i] = calculate_function_value(i);
+        }
+
+        // Calculate the score as the sum of squared differences.
+        Rational score = Rational("0");
+        for (size_t i = 0; i <= tga::args::server::K(); ++i) {
+            Rational diff = client_approximations[i] - server_approximations[i];
+            score += diff * diff;
+        }
+
+        // Add penalty to the score.
+        score += Rational(static_cast<double>(penalty));
+
+        return score;
+    }
 };
 
 /**
@@ -576,19 +645,32 @@ int accept_new_client(const int family, SockAddrVariant &client_addr) {
     return client_fd;
 }
 
+/**
+ * @brief Prepares a message to be sent to the client.
+ * 
+ * This function prepares a message to be sent to the client by copying
+ * the serialized message into the client's buffer and setting the
+ * appropriate poll descriptor events.
+ * 
+ * @param idx The index of the client in the poll descriptors.
+ * @param msg The message to send to the client.
+ */
 void prepare_to_send(const size_t idx, MsgPtr msg) {
+    // Create some useful aliases for readability
     ClientConnection &conn = connections.at(idx);
-    assert(conn.get_phase() != CommunicationPhase::PRE_GAME);
-
-    // Prepare buffer
     const std::string serialized_msg = msg->serialize();
     const size_t msg_len = serialized_msg.size();
-    assert(msg_len < buffer_size);
-    std::memcpy(conn.get_buffer(), serialized_msg.data(), msg_len);
 
+    assert(conn.get_phase() != CommunicationPhase::PRE_GAME);
+    assert(msg_len < buffer_size);
+
+    // Switch to writing.
+    poll_descriptors.at(idx).events = POLLOUT;
+
+    // Prepare buffer
+    std::memcpy(conn.get_buffer(), serialized_msg.data(), msg_len);
     conn.set_buffer_len(msg_len);
     conn.set_buffer_pos(0);
-    poll_descriptors.at(idx).events = POLLOUT; // Switch to writing.
 }
 
 // NOTE Not tested.
@@ -673,10 +755,11 @@ public:
             tga::net::get_port(conn.get_addr()),
             conn.get_client_id());
         
-        // Prepare for sending COEFF.
+        // Store coefficients and prepare for sending COEFF.
         std::string coeffs_str = tga::io::file::read_coeffs();
         auto coeffs_vec = convert_coeffs_string_to_vector(std::move(coeffs_str));
-        auto coeff_msg = std::make_unique<CoeffMessage>(std::move(coeffs_vec));
+        conn.set_coeffs(std::move(coeffs_vec));
+        auto coeff_msg = std::make_unique<CoeffMessage>(conn.get_coeffs());
         prepare_to_send(idx, std::move(coeff_msg));
     }
 };
@@ -745,7 +828,8 @@ public:
             //     value);
             
             // Plan sending STATE Message.
-            MsgPtr timeout_msg = std::make_unique<StateMessage>(conn.get_approximations());
+            MsgPtr timeout_msg = std::make_unique<StateMessage>(
+                                    conn.get_client_approximations());
             conn.set_timeout_meaning(TimeoutMeaning::SEND_DELAY);
             conn.set_timeout_message(std::move(timeout_msg));
             timeouts.emplace(idx, conn.get_state_delay());
@@ -817,6 +901,15 @@ MsgHandlerPtr make_handler(const std::string &msg_type) {
 }
 
 /**
+ * @brief Returns reference to variable holding number of
+ * correct messages left to receive from the clients.
+ */
+size_t& messages_to_receive() {
+    static size_t count = tga::args::server::M();
+    return count;
+}
+
+/**
  * @brief Handles a message received from a client.
  *
  * This function processes a message received from a client at the specified index in the poll descriptors.
@@ -876,16 +969,18 @@ void handle_received_message(const size_t idx, const size_t len_received, Receiv
 
         MsgHandlerPtr handler = make_handler(msg->messageType());
         handler->handle(msg, idx, rinfo);
+
+        if (rinfo.err == ReceivedDataStatus::SUCCESS) {
+            --messages_to_receive();
+        }
     }
 }
 
 } // anonymous namespace
 
-/**
- * @brief Returns number of correct messages left to receive from the clients
- */
-size_t messages_to_receive() {
-    return messages_to_receive_;
+/** @brief Returns number of correct messages left to receive from the clients. */
+size_t get_messages_to_receive() {
+    return messages_to_receive(); // :)
 }
 
 /**
@@ -987,7 +1082,6 @@ bool connection_exists(const size_t idx) {
  * @note Code based on the code from laboratories.
  */
 void setup() {
-    messages_to_receive_ = tga::args::server::M();
     port = static_cast<uint16_t>(tga::args::port());
     setup_socket(ipv4_socket_fd, AF_INET);
     setup_socket(ipv6_socket_fd, AF_INET6);
@@ -1069,13 +1163,12 @@ bool new_ipv6_clients() {
  * checking if there is data to read, write or if there is an error.
  * 
  * @param idx The index of the client in the poll descriptors.
- * @param rinfo The ReceiveInfo object to store information
- *              about possible received message.
  * 
  * @note This function is called when a poll event occurs for SOME client,
  *       but maybe not for THIS client.
  */
-void handle_poll_event(const size_t idx, ReceiveInfo &rinfo) {
+void handle_poll_event(const size_t idx) {
+    ReceiveInfo rinfo; // Object to store information about received message.
     pollfd &poll_fd = poll_descriptors.at(idx);
 
     // TODO To w końcu z POLLERR czy bez?
@@ -1107,8 +1200,12 @@ void handle_poll_event(const size_t idx, ReceiveInfo &rinfo) {
         } else {
             conn.set_buffer_pos(buffer_pos + sent_bytes);
             if (conn.get_buffer_pos() == buffer_len) {
-                poll_fd.events = POLLIN; // Switch to reading.
-                conn.set_phase(CommunicationPhase::WAITING_FOR_PUT); // FIXME Być może update_phase() ...
+                if (conn.get_phase() == CommunicationPhase::END) {
+                    close_client_connection(idx); // TODO Coś jeszcze?
+                } else {
+                    poll_fd.events = POLLIN; // Switch to reading.
+                    conn.set_phase(CommunicationPhase::WAITING_FOR_PUT);
+                }
             }
         }
     }
@@ -1129,15 +1226,26 @@ int poll_events() {
 }
 
 /**
- * @brief Ends the communication.
- * 
- * This function sends SCORING messages to clients, closes connections,
- * and exits the program.
+ * @brief Sends SCORING messages to clients.
  */
-void end() {
-    // send SCORING messages to clients
-    // close connections
-    // exit
+void send_scores() {
+    std::map<std::string, Rational> scores_map;
+
+    for (size_t idx = 0; idx < poll_descriptors.size(); ++idx) {
+        if (connections.find(idx) != connections.end()) {
+            ClientConnection &conn = connections.at(idx);
+            conn.set_phase(CommunicationPhase::END);
+            Rational score = conn.calculate_score();
+            scores_map.at(conn.get_client_id()) = std::move(score);
+        }
+    }
+
+    MsgPtr msg = std::make_unique<ScoringMessage>(scores_map);
+    for (size_t idx = 0; idx < poll_descriptors.size(); ++idx) {
+        if (connections.find(idx) != connections.end()) {
+            prepare_to_send(idx, std::move(msg));
+        }
+    }
 }
 
 } // namespace server

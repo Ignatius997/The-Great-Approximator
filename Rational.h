@@ -59,9 +59,59 @@ public:
     Rational operator+(const Rational& other) const {
         return Rational((double) *this + (double) other);
     }
+    Rational operator-(const Rational& other) const {
+        return Rational((double) *this - (double) other);
+    }
+    Rational operator*(const Rational& other) const {
+        return Rational((double) *this * (double) other);
+    }
+    Rational operator/(const Rational& other) const {
+        assert(other.num != "0" && "Division by zero is not allowed");
+        return Rational((double) *this / (double) other);
+    }
     Rational& operator+=(const Rational& other) {
         *this = *this + other;
         return *this;
+    }
+    Rational& operator-=(const Rational& other) {
+        *this = *this - other;
+        return *this;
+    }
+    Rational& operator*=(const Rational& other) {
+        *this = *this * other;
+        return *this;
+    }
+    Rational& operator/=(const Rational& other) {
+        assert(other.num != "0" && "Division by zero is not allowed");
+        *this = *this / other;
+        return *this;
+    }
+    Rational operator-() const {
+        std::string negated_num = num;
+        if (negated_num[0] == '-') {
+            negated_num.erase(0, 1); // Remove leading '-'
+        } else {
+            negated_num.insert(0, "-"); // Add leading '-'
+        }
+        return Rational(negated_num);
+    }
+    bool operator==(const Rational& other) const {
+        return (double) *this == (double) other;
+    }
+    bool operator!=(const Rational& other) const {
+        return !(*this == other);
+    }
+    bool operator<(const Rational& other) const {
+        return (double) *this < (double) other;
+    }
+    bool operator<=(const Rational& other) const {
+        return (double) *this <= (double) other;
+    }
+    bool operator>(const Rational& other) const {
+        return (double) *this > (double) other;
+    }
+    bool operator>=(const Rational& other) const {
+        return (double) *this >= (double) other;
     }
 
     explicit operator std::string() const { return num; }

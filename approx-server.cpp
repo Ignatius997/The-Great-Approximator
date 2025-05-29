@@ -14,14 +14,14 @@ using tga::comm::server::clear_revents;
 using tga::comm::server::update_timeouts;
 using tga::comm::server::handle_timeouts;
 using tga::comm::server::handle_poll_event;
-using tga::comm::server::messages_to_receive;
+using tga::comm::server::get_messages_to_receive;
 using tga::comm::server::poll_structure_size;
 using tga::comm::server::connection_exists;
 using tga::comm::server::new_ipv4_clients;
 using tga::comm::server::new_ipv6_clients;
 using tga::comm::server::new_clients;
 using tga::comm::server::poll_events;
-using tga::comm::server::end;
+using tga::comm::server::send_scores;
 
 int main(int argc, char* argv[]) {
     tga::args::parse(argc, argv);
@@ -29,10 +29,8 @@ int main(int argc, char* argv[]) {
 
     setup();
 
-    while (messages_to_receive() > 0) {
-        // FIXME Na razie wygląda na to, że to rinfo powinno być poziom niżej.
-        // FIXME bo tutaj nie jest ono wykorzystywane
-        ReceiveInfo rinfo;
+    // TODO Czy pętla ma być nieskończona?
+    while (true) {
         clear_revents();
         
         // TODO Maybe handle Ctrl-C like in echo-server-nonblocking.c
@@ -54,9 +52,9 @@ int main(int argc, char* argv[]) {
 
             for (size_t i = 2; i < poll_structure_size(); ++i) {
                 if (connection_exists(i)) {
-                    handle_poll_event(i, rinfo);
-                    if (messages_to_receive() == 0) {
-                        end();
+                    handle_poll_event(i);
+                    if (get_messages_to_receive() == 0) {
+                        send_scores();
                         break;
                     }
                 }

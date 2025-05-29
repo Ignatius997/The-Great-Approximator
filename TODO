@@ -1,50 +1,56 @@
 NOTE TODO:
-6. Modus Operandi. (in progress)
-
 Zbigniew Jurkiewicz mówi, że POLLERR bierze się stąd, że kiedy w trakcie
 np. read-a lub innej funkcji systemowej nadejdzie sygnał, lub nastąpi inna
 sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
 i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
 
 ERROR
-Wysyłanie wiadomości przez serwer
-Obczaić FIXME przy odbieraniu poll-a z POLLOUT w communication.cpp i generalnmie interpretowanie dziwnych wsynikorw write/read
+Patologiczne sytuacje z buforowaniem wysyłania i odbieraniem takiego szajsu (patrz poniżej)
 ERROR
 
-errno przy read dla wyniku -1:
-    Jesteśmy w trybie blokującym, więc nie sprawdzamy żadnych flag.
-
-Wysyłanie wiadomości przez serwer
-    Trzeba ustawić events na POLLOUT w poll_descriptors i zapisać wiadomość do przesłania w clients_connection.
-
 TODO Jak to jest z buforowaniem wysyłania? Czy klient może odczytać np. pół komunikatu?
-
+TODO Czy w ogóle należy obsługiwać jakieś patologiczne sytuacje, że na przykład otrzymano pół komunikatu
+    i jako że później może zostać przesłana brakująca połowa, to czeka się na to, co zostanie dosłanego następnie? 
 TODO Czy możliwe jest, że w jednym odebranym komunikacie będzie >1 wiadomość, np. gdy klient szybko wyśle 2 wiadomości?
     TAK!
     Wtedy w sumie wszystko działa, ale trzeba to jeszcze obsłużyć u serwera.
 
 TODO Widać lukę w MessageHandler: Klienmtowi nie potrzebne jest idx, a zatem mamy dwie klasy Handler-ów: klientowi i serwerowi.
-TODO Coraz bardziej widać, że trzeba będzie zrobić oddzielne pliki dla klienta i serwera.
+    Coraz bardziej widać, że trzeba będzie zrobić oddzielne pliki dla klienta i serwera.
+
 TODO Obczaić pierwszy podpunkt pytania na forum zadanego w czwartek, 22 maja 2025, 21:05
+TODO Można zrobić tak, że w trakcie oczekiwania na komunikaty od klienta,
+    serwer w innym wątku oblicza swoje wartości aproksymacji
 
 TODO Komunikacja:
     a) setup server-DONE client-DONE
     b) zgloszenie się klienta, czyli wyslanie HELLO DONE
     c) przyjęcie nowego klienta w TCP DONE
-    d) obsłużenie HELLO ...
+    d) obsłużenie HELLO przez klienta ...
     d1) zaimplementować deserializację wiadomości w Message z użyciem ReceiveInfo DONE
     d2) zmienić obsługę poll-ów. DONE
-    f) timeout w serwrze DONE (na razie tylko dla hello)
+    f) timeout w serwrze DONE
     g) Implementacja MessageHandlerów DONE dla serwera.
 
     y) obsługa sygnałów dla debugowania, ażeby przetestować sprzątanie
     z) test ...
 
 TODO Operatory porównania w netutils dla sockaddr_in i sockaddr_in6 są dość kontrowersyjne, bo porównują rodzinę (która chyba powinna być taka sama).
+TODO Jeśli trzeba, napisać odpowiednie kosntruktory i operatory porównania dla Message, żeby można było robić na nich std::move.
 
 TODO Może zoptymalizować tga::comm::server::clear_revents()
 
 TODO Metody get_message_type powinny być const, albo powinny to być po prostu const pola
+TODO Czy optymalniej jest miec Rational w std::string czy może char[X], jeśli istnieje jakieś X
+
+TODO Przeczytać poniższe przed rozpoczęciem implementacji klienta:
+SPOJRZENIE ADRIANA NA SENS GRY:
+    ja to widzę w ten sposób:
+    1. tak ta gra jest bardzo nudna
+    2. to, że klient bez flagi -a wczytuje polecenia z wejścia i mogą to być brednie nie ma znaczenia, bo wtedy oddajemy kontrolę użytkownikowi i to jego sprawa
+    3. obliczanie wielomianu w jakimś punkcie jest trywialne, to prawda, ale potem uświadomiłem sobie, że element strategii pojawia się w innym miejscu. mianowicie chodzi o to, że w komunikacie put masz limit na maksymalną modyfikację aproksymacji jaką możesz wykonać, więc jest szansa, że potrzebujesz kilka komunikatów dla jednego punktu. i wtedy być może ma znaczenie w jakiej kolejności będziesz uzupełniał aproksymacje dla punktów (bo wynik to suma różnic między wartością wielomianu, a twoją aproksymacją)
+    4. limit komunikatów odbieranych przez serwer w pewnym sensie uwydatnia istotność decyzji, który punkt będziemy aproksymować najpierw, a może wszystkie równomiernie, po kolei
+    5. z obliczeniami zmiennoprzecinkowymi to chyba w ogólności jest tak, że są problematyczne pod względem precyzji. trochę nadziei może dawać to, że typ double może trzymać znacznie więcej cyfr po przecinku niż 7, więc może się nie wykrzaczy przy tak małej liczbie
 
 18. Zamień te gettery typu `requests_handled` na `get_requests_handled`.
 19. Czy na pewno zrobiono walidację argumentów w ProgramArgs?
@@ -52,6 +58,7 @@ TODO Metody get_message_type powinny być const, albo powinny to być po prostu 
 Q8. W związku z dużą ilością include-ów iostream itd, czy należy robić jakieś deklarowanie obiektu iostream,
     tak jak to miało miejsce w jednym z mini-projektów na KPCPP?
 Q12. Aktualny rozmiar bufora to 8 KB. Może dac więcej?
+
 NOTE Q&A:
 Q1. C czy C++?
     ODP: C++
@@ -108,6 +115,7 @@ Q14 Czy istnieje opcja nadpisywania wiadomości do przesłania (z opóźnieniem 
     Nie: Jeśli otrzymamy PUT przed wysłaniem odpowiedzi na poprzedniego PUT-a, to zostanie to wykryte.
 
 NOTE DONE:
+6. Modus Operandi. DONE
 8. MOŻNA zrobić te argsy ładniejsze: zamiast dwóch plików .cpp zrobić jeden
     z abstrakcyjną klasą ProgramArgs i dziedzicami Client- i ServerProgramArgs.
     DONE, Ale args.cpp cały czas jest brzydkie i mokre.
@@ -136,3 +144,6 @@ NOTE DONE:
 21. Handle-owanie wiadomości od klienta. DONE
 22. Logika timeout-ów. DONE
 23. Logika CommunicationPhase. DONE
+24. Wysyłanie wiadomości przez serwer DONE
+25. Handle-owanie errorów w read-write DONE
+26. Zakończenie gry po otrzymaniu wystarczającej liczby komunikatów DONE
