@@ -53,7 +53,9 @@ using tga::rat::Rational;
 
 namespace {
 
-constexpr size_t buffer_size = (1 << 13); // 8 KiB
+constexpr size_t buffer_size = 1 << 13; // 8 KiB
+constexpr size_t max_msg_len = buffer_size >> 1; // TODO Zastanowić się nad tym.
+constexpr size_t min_len_to_read = max_msg_len >> 4;
 
 // NOTE Added just out of pure vanity.
 class MessageHandler {
@@ -106,8 +108,9 @@ protected:
     SockAddrVariant addr; // Address of the client.
 
     char buffer[buffer_size] = {0}; // Buffer for receiving and sending messages from the client.
+    size_t msg_start_idx = 0; // Index of the start of the current message in the buffer.
     size_t buffer_len = 0; // Length of the buffer, i.e., how many valid bytes are currently in the buffer. Used for sending messages.
-    size_t buffer_pos = 0; // Position in the buffer, i.e., how many bytes were already written to the buffer.
+    size_t buffer_pos = 0; // Position in the buffer, i.e., how many bytes were already written to / read from the buffer.
 
     size_t penalty = 0; // Penalty for the client.
 
@@ -232,6 +235,24 @@ public:
     void set_buffer_pos(size_t pos) {
         assert(pos <= buffer_len);
         buffer_pos = pos;
+    }
+
+    /**
+     * @brief Returns index of the start of the current message in the buffer.
+     * @return The index of the start of the current message in the buffer.
+     */
+    [[nodiscard]]
+    size_t get_msg_start_idx() const {
+        return msg_start_idx;
+    }
+
+    /**
+     * @brief Sets the index of the start of the current message in the buffer.
+     * @param idx The new index of the start of the current message in the buffer.
+     */
+    void set_msg_start_idx(size_t idx) {
+        assert(idx < buffer_size);
+        msg_start_idx = idx;
     }
 
     std::vector<Rational> get_coeffs() const {
@@ -876,11 +897,10 @@ MsgHandlerPtr make_handler(const std::string &msg_type) {
     }
 }
 
-
 /**
- * @brief Handles a message received from a client.
+ * @brief Handles data received from a client.
  *
- * This function processes a message received from a client at the specified index in the poll descriptors.
+ * This function processes data received from a client at the specified index in the poll descriptors.
  * It attempts to deserialize the message from the client's buffer and performs validation and error handling.
  * If the message is invalid or deserialization fails, it logs the error, optionally closes the connection
  * (e.g., if the client is not yet baptised), and returns. If the message is valid, it ensures protocol correctness
@@ -899,11 +919,97 @@ MsgHandlerPtr make_handler(const std::string &msg_type) {
  * @note This function should be called after data has been read from the client's socket into its buffer.
  * @note The function logs all invalid messages and protocol violations for auditing and debugging purposes.
  */
-void handle_received_message(const size_t idx, const size_t len_received, ReceiveInfo &rinfo) {
+void handle_received_data(const size_t idx, const size_t len_received, ReceiveInfo &rinfo) {
     assert(len_received > 0);
 
-    // FIXME Trzeba uwzględnić wścibski przypadek, kiedy mamy dwie wiadomości w buforze
-    const char *buffer = connections.at(idx).get_buffer();
+    ClientConnection &conn = connections.at(idx);
+    char *buffer = conn.get_buffer();
+    bool data_to_process = true;
+    size_t data_left = len_received; // Remaining data to process.
+
+    while (data_to_process) {
+        const size_t msg_start_idx = conn.get_msg_start_idx(); // Początek aktualnej wiadomości.
+        
+        std::string full_data(buffer + conn.get_buffer_pos(),
+                            static_cast<size_t>(len_received));
+        const size_t first_crlf_idx = full_data.find('\r\n');
+        data_left = data_left - first_crlf_idx - 2; // -2 for '\r\n' itself.
+
+        // new_pos: new buffer position; current_len: length of the current message.
+        size_t new_pos, current_len;
+        if (first_crlf_idx == std::string::npos) {
+            new_pos = conn.get_buffer_pos() + len_received;
+            current_len = new_pos - msg_start_idx; // Length of the current message.
+        } else { // '\r\n' found, we can process the message.
+            new_pos = conn.get_buffer_pos() + first_crlf_idx + 2; // +2 for '\r\n'.
+            current_len = new_pos - msg_start_idx - 2
+        }
+
+        const size_t new_pos = first_crlf_idx == std::string::npos ?
+                                conn.get_buffer_pos() + len_received :
+                                conn.get_buffer_pos() + first_crlf_idx + 2; // +2 for '\r\n'.
+        size_t current_len = new_pos - msg_start_idx; // Length of the current message.
+
+        if (first_crlf_idx == std::string::npos) { // '\r\n' not found.
+            if (current_len < max_msg_len) { // Message too long or incorrect.
+                rinfo.err = ReceivedDataStatus::INVALID_TYPE;
+                tga::io::log::err::message(
+                    std::string(buffer + msg_start_idx, current_len),
+                    conn.get_client_id(),
+                    conn.get_addr());
+                
+                conn.set_buffer_pos(new_pos);
+                conn.set_msg_start_idx(new_pos);
+            } else if (buffer_size - new_pos < min_len_to_read) { // Buffer is (almost) full.
+                // Move the unprocessed data to the beginning of the buffer.
+                std::memcpy(buffer, buffer + msg_start_idx, current_len);
+                conn.set_buffer_pos(current_len);
+                conn.set_msg_start_idx(0);
+            }
+
+            return; // No complete message to process yet.
+        }
+
+        MsgPtr msg = tga::msg::deserialize_message(buffer + msg_start_idx,
+                                            first_crlf_idx - msg_start_idx + 1,
+                                            rinfo);
+        
+        // FIXME Ale ten warunek brzydkko wygląda
+        if (msg == nullptr || rinfo.err != ReceivedDataStatus::SUCCESS ||
+                (conn.get_phase() == CommunicationPhase::PRE_GAME && 
+                msg->messageType() != "HELLO")) { // Invalid message.
+            std::string message_text(buffer, len_received);
+            auto addr = conn.get_addr();
+            std::string player_id = "UNKNOWN";
+            if (conn.get_phase() != CommunicationPhase::PRE_GAME) {
+                player_id = conn.get_client_id();
+            }
+
+            tga::io::log::err::message(message_text, player_id, addr);
+            
+            if (conn.get_phase() == CommunicationPhase::PRE_GAME) {
+                // First message from the client MUST BE a correct HELLO message.
+                close_client_connection(idx);
+            }
+        }
+
+        // Message is valid.
+        MsgHandlerPtr handler = make_handler(msg->messageType());
+        handler->handle(msg, idx, rinfo);
+
+        if (rinfo.err == ReceivedDataStatus::SUCCESS) {
+            --messages_to_receive();
+        }
+    }
+
+    // Update the buffer position and message start index,
+    // if possible without copying.
+    if (conn.get_buffer_pos() == conn.get_msg_start_idx()) {
+        conn.set_buffer_pos(0);
+        conn.set_msg_start_idx(0);
+    }
+    
+    // ==== GRANICA ZŁA ====
     MsgPtr msg = tga::msg::deserialize_message(buffer, len_received, rinfo);
     const auto &conn = connections.at(idx);
 
@@ -918,22 +1024,19 @@ void handle_received_message(const size_t idx, const size_t len_received, Receiv
         tga::io::log::err::message(message_text, player_id, addr);
         
         if (conn.get_phase() == CommunicationPhase::PRE_GAME) {
+            // First message from the client MUST BE a correct HELLO message.
             close_client_connection(idx);
         }
     } else { // Valid message.
-        // FIXME A po co ten warunek, przecież jesteśmy w serwerze.
-        if (tga::config::server) {
-            // First message from the client MUST BE a correct HELLO message.
-            // Otherwise, the connection with the client has to be closed.
-            if (conn.get_phase() == CommunicationPhase::PRE_GAME &&
-                    msg->messageType() != "HELLO") {
-                tga::io::log::err::message(
-                    msg->serialize(),
-                    conn.get_client_id(),
-                    conn.get_addr());
-                close_client_connection(idx);
-                return;
-            }
+        // First message from the client MUST BE a correct HELLO message.
+        if (conn.get_phase() == CommunicationPhase::PRE_GAME &&
+                msg->messageType() != "HELLO") {
+            tga::io::log::err::message(
+                msg->serialize(),
+                conn.get_client_id(),
+                conn.get_addr());
+            close_client_connection(idx);
+            return;
         }
 
         MsgHandlerPtr handler = make_handler(msg->messageType());
@@ -1142,14 +1245,19 @@ void handle_poll_event(const size_t idx) {
 
     // TODO To w końcu z POLLERR czy bez?
     if ((poll_fd.revents & (POLLIN | POLLERR)) != 0) {
-        ssize_t len_received = read(poll_fd.fd, connections.at(idx).get_buffer(), 0);
+        ClientConnection &conn = connections.at(idx);
+        char *buffer = conn.get_buffer();
+        size_t pos = conn.get_buffer_pos();
+        size_t buffer_len = conn.get_buffer_len();
+
+        ssize_t len_received = read(poll_fd.fd, buffer + pos, buffer_size - pos);
         if (len_received < 0) {
             tga::io::log::err::error("read from existing connection");
             close_client_connection(idx);
         } else if (len_received == 0) { // EOF, client disconnected.
             rinfo.err = ReceivedDataStatus::DISCONNECTED;
             close_client_connection(idx);
-        } else handle_received_message(idx, (size_t) len_received, rinfo);
+        } else handle_received_data(idx, (size_t) len_received, rinfo);
     }
 
     if ((poll_fd.revents & POLLOUT) != 0) {
@@ -1437,7 +1545,7 @@ void setup() {
 void receive_message() {  
     ReceiveInfo rinfo;
 
-    ssize_t len_received = read(socket_fd, buffer, 0);
+    ssize_t len_received = read(socket_fd, buffer, 0); // FIXME Czemu było 0?
     if (len_received < 0) {
         tga::io::log::err::error("read");
         close_connection();

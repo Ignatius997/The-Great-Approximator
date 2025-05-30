@@ -5,6 +5,7 @@ sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
 i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
 
 ERROR
+handle_received_data
 ZMODYFIKOWAĆ ODBIERANIE WIADOMOŚCI NA TCP-OWE (patrz poniżej)!!!
 Odbieranie wiadomości
 Wysyłanie wiadomości
