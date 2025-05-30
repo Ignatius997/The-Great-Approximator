@@ -31,9 +31,11 @@ private:
     const std::string player_id;
 
 public:
+    static constexpr const char *msg_type = "HELLO";
+
     explicit HelloMessage(const std::string& id) : player_id(id) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-    std::string messageType() const override final { return "HELLO"; }
+    std::string messageType() const override final { return msg_type; }
     std::string messageContent() const override { return player_id; }
     std::string getPlayerID() const { return player_id; }
 };
@@ -48,12 +50,11 @@ private:
     const std::vector<Rational> coeffs;
 
 public:
+    static constexpr const char *msg_type = "COEFF";
+
     CoeffMessage(std::vector<Rational> coeffs) : Message(), coeffs(std::move(coeffs)) {}
-
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-
-    std::string messageType() const override final { return "COEFF"; }
-
+    std::string messageType() const override final { return msg_type; }
     std::string messageContent() const override {
         return tga::io::file::read_coeffs();
     }
@@ -72,12 +73,11 @@ private:
     const std::vector<Rational> &approx; // Approximation of the function. approx.size() == K.
 
 public:
+    static constexpr const char *msg_type = "STATE";
+
     StateMessage(const std::vector<Rational> &approx) : approx(approx) {}
-
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-
-    std::string messageType() const override final { return "STATE"; }
-
+    std::string messageType() const override final { return msg_type; }
     std::string messageContent() const override {
         std::string content;
 
@@ -106,11 +106,9 @@ public:
     static std::optional<std::pair<size_t, Rational>> deserialize_helper(
                                                     const std::string& msg_body,
                                                     ReceiveInfo& rinfo);
-
     std::string messageContent() const override final {
         return std::to_string(point) + " " + static_cast<std::string>(value);
     }
-
     size_t getPoint() const { return point; }
     Rational getValue() const { return value; }
 };
@@ -121,10 +119,11 @@ public:
  */
 class PutMessage : public PVMessage {
 public:
+    static constexpr const char *msg_type = "PUT";
+
     using PVMessage::PVMessage; // Inherit constructor
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo& rinfo);
-
-    std::string messageType() const override final { return "PUT"; }
+    std::string messageType() const override final { return msg_type; }
 };
 
 /**
@@ -133,10 +132,10 @@ public:
  */
 class BadPutMessage : public PVMessage {
 public:
+    static constexpr const char *msg_type = "BAD_PUT";
     using PVMessage::PVMessage; // Inherit constructor
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo& rinfo);
-
-    std::string messageType() const override final { return "BAD_PUT"; }
+    std::string messageType() const override final { return msg_type; }
 };
 
 /**
@@ -145,10 +144,10 @@ public:
  */
 class PenaltyMessage : public PVMessage {
 public:
+    static constexpr const char *msg_type = "PENALTY";
     using PVMessage::PVMessage; // Inherit constructor
-
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-    std::string messageType() const override final { return "PENALTY"; }
+    std::string messageType() const override final { return msg_type; }
 };
 
 // ==== Endgame Messages ====
@@ -162,14 +161,11 @@ private:
     const std::map<std::string, Rational> &scores;
 
 public:
+    static constexpr const char *msg_type = "SCORING";
+
     ScoringMessage(std::map<std::string, Rational> scores) : scores(std::move(scores)) {}
-
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-
-    std::string messageType() const override final {
-        return "SCORING";
-    }
-
+    std::string messageType() const override final { return msg_type; }
     // NOTE Check, if the order of players is correct in the for loop. I think yes.
     std::string messageContent() const override {
         std::string content;

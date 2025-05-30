@@ -5,12 +5,14 @@ sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
 i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
 
 ERROR
-ZMODYFIKOWAĆ ODBIERANIE WIADOMOŚCI NA TCP-OWE (po rozmowie z Szymonem)!!!
+ZMODYFIKOWAĆ ODBIERANIE WIADOMOŚCI NA TCP-OWE (patrz poniżej)!!!
 Odbieranie wiadomości
 Wysyłanie wiadomości
 Po prostu KLIENT
 Patologiczne sytuacje z buforowaniem wysyłania i odbieraniem takiego szajsu (patrz poniżej)
 ERROR
+
+ODBIERANIE WIADOMOŚCI: Patrz kartka
 
 TODO Jak to jest z buforowaniem wysyłania? Czy klient może odczytać np. pół komunikatu?
 TODO Czy w ogóle należy obsługiwać jakieś patologiczne sytuacje, że na przykład otrzymano pół komunikatu
@@ -25,6 +27,8 @@ TODO Widać lukę w MessageHandler: Klienmtowi nie potrzebne jest idx, a zatem m
 TODO Obczaić pierwszy podpunkt pytania na forum zadanego w czwartek, 22 maja 2025, 21:05
 TODO Można zrobić tak, że w trakcie oczekiwania na komunikaty od klienta,
     serwer w innym wątku oblicza swoje wartości aproksymacji
+
+TODO Zamienić constexpr char * na constexpr const char *
 
 TODO Komunikacja:
     a) setup server-DONE client-DONE
