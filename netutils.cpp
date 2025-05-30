@@ -151,7 +151,7 @@ std::string get_ip(const SockAddrVariant &addr) {
 uint16_t get_port(const SockAddrVariant &addr) {
     if (std::holds_alternative<sockaddr_in>(addr)) {
         const sockaddr_in *addr4 = std::get_if<sockaddr_in>(&addr);
-        return ntohs(addr4->sin_port);
+        return (addr4->sin_port);
     } else if (std::holds_alternative<sockaddr_in6>(addr)) {
         const sockaddr_in6 *addr6 = std::get_if<sockaddr_in6>(&addr);
         return ntohs(addr6->sin6_port);

@@ -49,6 +49,7 @@ enum CommunicationPhase {
 
 enum ReceivedDataStatus {
     SUCCESS,        // Message is valid and processed successfully.
+    DISCONNECTED,   // Client/server disconnected.
     INVALID_TYPE,   // Unresolved or not the expected message type.
     INVALID_FORMAT, // Wrong format for the message type
     INVALID_LENGTH, // Wrong length of message data.

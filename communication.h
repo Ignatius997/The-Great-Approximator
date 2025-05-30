@@ -5,12 +5,14 @@
 
 #include "netutils.h"
 #include "Message.h"
+#include "MessageCombinators.h"
 
 namespace tga {
 namespace comm {
 
 using tga::msg::Message;
 using tga::net::ReceiveInfo;
+using tga::msg::MsgPtr;
 
 namespace server {
     size_t get_messages_to_receive();
@@ -30,11 +32,11 @@ namespace server {
 }
 
 namespace client {
-    int get_sockfd();
+    void send_message(MsgPtr msg);
+    void receive_message();
 }
 
 void setup();
-void send_message(int fd, const Message &msg);
 
 } // comm
 } // tga

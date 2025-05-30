@@ -27,7 +27,7 @@ CLIENT_OBJ := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/client-%.o,$(CLIENT_SRC))
 
 .PHONY: all clean
 
-all: $(SERVER_TGT) $(CLIENT_TGT) cleano
+all: $(SERVER_TGT) $(CLIENT_TGT)
 
 # Kompilacja plików serwera z -DSERVER
 $(OBJ_DIR)/server-%.o: $(SRC_DIR)/%.cpp

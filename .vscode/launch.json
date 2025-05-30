@@ -17,8 +17,28 @@
             "name": "Debug TGA Server",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/approx-server", // ścieżka do Twojego programu
-            "args": ["-f", "coeffs.txt"],
+            "program": "${workspaceFolder}/approx-server",
+            "args": ["-p", "12345", "-f", "coeffs.txt"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "build"
+        },
+        {
+            "name": "Debug TGA Client",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/approx-client",
+            "args": ["-u", "player", "-s", "127.0.0.1", "-p", "12345"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

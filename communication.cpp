@@ -51,6 +51,18 @@ using tga::msg::ScoringMessage;
 
 using tga::rat::Rational;
 
+namespace {
+
+constexpr size_t buffer_size = (1 << 13); // 8 KiB
+
+// NOTE Added just out of pure vanity.
+class MessageHandler {
+public:
+    virtual ~MessageHandler() = default;
+};
+
+} // anonymous namespace
+
 namespace server {
 
 namespace {
@@ -65,7 +77,6 @@ constexpr timeval bad_put_delay { .tv_sec = 1, .tv_usec = 0 };
 
 const std::string empty_string = ""; // Empty string for client ID.
 
-constexpr size_t buffer_size = (1 << 13); // 8 KiB
 std::vector<std::vector<char>> buffers; // Buffers for receiving messages from clients.
 
 constexpr int socket_queue_len = 10; // FIXME Ulepszyć to?
@@ -74,7 +85,7 @@ int ipv4_socket_fd = -1;
 int ipv6_socket_fd = -1;
 
 /**
- * @brief Poll descriptors for the server.
+ * @brief Poll descriptors for the clients.
  * @note If a socket is closed, its fd is set to -1.
  */
 std::vector<pollfd> poll_descriptors;
@@ -136,7 +147,7 @@ public:
      */
     [[nodiscard]]
     std::string get_client_id() const {
-        assert(phase != CommunicationPhase::PRE_GAME);
+        // NOTE Czy powinno zwracać UNKNOWN w przypadku braku ID? ODP Nie
         return client_id;
     }
 
@@ -521,7 +532,16 @@ void setup_socket(int &sockfd, const int family) {
         exit(1);
     }
 
-    if (tga::net::_bind(sockfd, htons(port), family) == 1) {
+    // Allow only IPv6 connections if family is AF_INET6.
+    if (family == AF_INET6) {
+        int opt = 1;
+        if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt)) < 0) {
+            tga::io::log::err::error("setsockopt IPV6_V6ONLY");
+            exit(1);
+        }
+    }
+
+    if (tga::net::_bind(sockfd, port, family) == 1) {
         tga::io::log::err::error("bind IPv" + family);
         exit(1);
     }
@@ -548,7 +568,14 @@ void setup_socket(int &sockfd, const int family) {
 }
 
 void close_client_connection(const int idx) {
-    if (tga::config::debug) tga::io::log::err::error("closing connection");
+    if (tga::config::debug) {
+        // TODO Napisać oddzielny log do zamykania połączeń
+        auto player_id = connections.at(idx).get_client_id() == empty_string ? 
+            "UNKNOWN" : connections.at(idx).get_client_id();
+        tga::io::log::info::custom("Closing connection with " + player_id + "-[" +
+            tga::net::get_ip(connections.at(idx).get_addr()) + "]:" +
+            std::to_string(tga::net::get_port(connections.at(idx).get_addr())));
+    }
     
     auto it = connections.find(idx);
     if (it != connections.end()) {
@@ -599,7 +626,8 @@ size_t register_new_client(const int client_fd, const SockAddrVariant &client_ad
 
     // Register only the address of the client.
     // The client shall be outrightly registered only after HELLO message.
-    connections.at(idx) = ClientConnection(client_addr);
+    assert(connections.find(idx) == connections.end());
+    connections.emplace(idx, ClientConnection(client_addr));
     return idx;
 }
 
@@ -697,11 +725,20 @@ std::vector<Rational> convert_coeffs_string_to_vector(std::string coeffs_str) {
     return coeffs_vec;
 }
 
-// ==== Message Handlers ====
+/**
+ * @brief Returns reference to variable holding number of
+ * correct messages left to receive from the clients.
+ */
+size_t& messages_to_receive() {
+    static size_t count = tga::args::server::M();
+    return count;
+}
 
-class MessageHandler {
+// ==== Message handlers ====
+
+class ServerMessageHandler : public MessageHandler {
 public:
-    virtual ~MessageHandler() = default;
+    virtual ~ServerMessageHandler() = default; // TODO O co biega?
 
     /**
      * @brief Handles the received message.
@@ -722,7 +759,7 @@ public:
     virtual void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) = 0;
 };
 
-class HelloHandler : public MessageHandler {
+class HelloHandler : public ServerMessageHandler {
 public:
     /**
      * @brief Handles the HELLO message from the client.
@@ -764,18 +801,7 @@ public:
     }
 };
 
-class CoeffHandler : public MessageHandler {
-public:
-    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
-        (void) msg; // Unused parameter
-        (void) rinfo; // Unused parameter
-        (void) idx; // Unused parameter
-        // TODO Implement
-
-    }
-};
-
-class PutHandler : public MessageHandler {
+class PutHandler : public ServerMessageHandler {
 public:
     void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
         ClientConnection &conn = connections.at(idx);
@@ -837,77 +863,19 @@ public:
     }
 };
 
-class BadPutHandler : public MessageHandler {
-public:
-    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
-        (void) msg; // Unused parameter
-        (void) rinfo; // Unused parameter
-        (void) idx; // Unused parameter
-        // TODO Implement
-    }
-};
-
-class StateHandler : public MessageHandler {
-public:
-    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
-        (void) msg; // Unused parameter
-        (void) rinfo; // Unused parameter
-        (void) idx; // Unused parameter// TODO Implement
-
-    }
-};
-
-class PenaltyHandler : public MessageHandler {
-public:
-    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
-        (void) msg; // Unused parameter
-        (void) rinfo; // Unused parameter
-        (void) idx; // Unused parameter
-        // TODO Implement
-    }
-};
-
-class ScoringHandler : public MessageHandler {
-public:
-    void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
-        (void) msg; // Unused parameter
-        (void) rinfo; // Unused parameter
-        (void) idx; // Unused parameter
-        // TODO Implement
-    }
-};
-
-using MsgHandlerPtr = std::unique_ptr<MessageHandler>;
+using MsgHandlerPtr = std::unique_ptr<ServerMessageHandler>;
 
 MsgHandlerPtr make_handler(const std::string &msg_type) {
     if (msg_type == "HELLO") {
         return std::make_unique<HelloHandler>();
-    } else if (msg_type == "COEFF") {
-        return std::make_unique<CoeffHandler>();
-    } else if (msg_type == "STATE") {
-        return std::make_unique<StateHandler>();
-    } else if (msg_type == "SCORING") {
-        return std::make_unique<ScoringHandler>();
     } else if (msg_type == "PUT") {
         return std::make_unique<PutHandler>();
-    } else if (msg_type == "BAD_PUT") {
-        return std::make_unique<BadPutHandler>();
-    } else if (msg_type == "PENALTY") {
-        return std::make_unique<PenaltyHandler>();
     } else {
         tga::io::log::err::error("unknown message type: " + msg_type);
         return nullptr;
     }
 }
 
-/**
- * @brief Returns reference to variable holding number of
- * correct messages left to receive from the clients.
- */
-size_t& messages_to_receive() {
-    static size_t count = tga::args::server::M();
-    return count;
-}
 
 /**
  * @brief Handles a message received from a client.
@@ -953,6 +921,7 @@ void handle_received_message(const size_t idx, const size_t len_received, Receiv
             close_client_connection(idx);
         }
     } else { // Valid message.
+        // FIXME A po co ten warunek, przecież jesteśmy w serwerze.
         if (tga::config::server) {
             // First message from the client MUST BE a correct HELLO message.
             // Otherwise, the connection with the client has to be closed.
@@ -1177,7 +1146,8 @@ void handle_poll_event(const size_t idx) {
         if (len_received < 0) {
             tga::io::log::err::error("read from existing connection");
             close_client_connection(idx);
-        } else if (len_received == 0) { // EOF, client disconnected
+        } else if (len_received == 0) { // EOF, client disconnected.
+            rinfo.err = ReceivedDataStatus::DISCONNECTED;
             close_client_connection(idx);
         } else handle_received_message(idx, (size_t) len_received, rinfo);
     }
@@ -1199,9 +1169,22 @@ void handle_poll_event(const size_t idx) {
             }
         } else {
             conn.set_buffer_pos(buffer_pos + sent_bytes);
+
             if (conn.get_buffer_pos() == buffer_len) {
                 if (conn.get_phase() == CommunicationPhase::END) {
                     close_client_connection(idx); // TODO Coś jeszcze?
+                    
+                    if (connections.size() == 0) { // All clients disconnected.
+                        // TODO Write some log about end of game.
+                        // tga::io::log::info::server::all_clients_disconnected();
+                        /** TODO
+                         * W treści zadania jest napisane, że serwer
+                         * "odczekuje 1 sekundę i rozpoczyna pracę od początku",
+                         * jednak czy oznacza to, że ma spać?
+                         */
+                        sleep(1);
+                    }
+
                 } else {
                     poll_fd.events = POLLIN; // Switch to reading.
                     conn.set_phase(CommunicationPhase::WAITING_FOR_PUT);
@@ -1258,6 +1241,8 @@ int socket_fd; // Socket file descriptor.
 uint16_t port; // Stored in host byte order.
 int family; // Address family (AF_INET or AF_INET6).
 
+char buffer[buffer_size]; // Buffer for receiving messages.
+
 /**
  * @brief Resolves a hostname to a SockAddrVariant for TCP connections.
  *
@@ -1302,6 +1287,121 @@ SockAddrVariant get_server_address(const std::string &host, const uint16_t port)
     return sock_addr;
 }
 
+/**
+ * @brief Closes connection with the server.
+ * 
+ * This function closes the socket file descriptor and resets it to -1.
+ * It also logs the disconnection event.
+ */
+void close_connection() {
+    if (socket_fd >= 0) {
+        close(socket_fd);
+        socket_fd = -1;
+    }
+    
+    // TODO Napisać taki log
+    // tga::io::log::info::client::disconnected_from(tga::args::client::server(), port);
+}
+
+class ClientMessageHandler : public MessageHandler{
+public:
+    virtual ~ClientMessageHandler() = default;
+
+    /**
+     * @brief Handles the received message.
+     * 
+     * This function should be overridden by derived classes to handle
+     * specific types of messages.
+     * 
+     * @param msg The received message.
+     * @param rinfo Information about the received message.
+     */
+    virtual void handle(const MsgPtr &msg, ReceiveInfo &rinfo) = 0;
+};
+
+class CoeffHandler : public ClientMessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+
+    }
+};
+
+class BadPutHandler : public ClientMessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+class StateHandler : public ClientMessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+class PenaltyHandler : public ClientMessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+class ScoringHandler : public ClientMessageHandler {
+public:
+    void handle(const MsgPtr &msg, ReceiveInfo &rinfo) override {
+        (void) msg; // Unused parameter
+        (void) rinfo; // Unused parameter
+        // TODO Implement
+    }
+};
+
+using MsgHandlerPtr = std::unique_ptr<ClientMessageHandler>;
+
+MsgHandlerPtr make_handler(const std::string &msg_type) {
+    if (msg_type == "COEFF") {
+        return std::make_unique<CoeffHandler>();
+    } else if (msg_type == "STATE") {
+        return std::make_unique<StateHandler>();
+    } else if (msg_type == "SCORING") {
+        return std::make_unique<ScoringHandler>();
+    } else if (msg_type == "BAD_PUT") {
+        return std::make_unique<BadPutHandler>();
+    } else if (msg_type == "PENALTY") {
+        return std::make_unique<PenaltyHandler>();
+    } else {
+        tga::io::log::err::error("unknown message type: " + msg_type);
+        return nullptr;
+    }
+}
+
+void handle_received_message(const ssize_t len_received, ReceiveInfo &rinfo) {
+    assert(len_received > 0);
+
+    // FIXME Trzeba uwzględnić wścibski przypadek, kiedy mamy dwie wiadomości w buforze
+    MsgPtr msg = tga::msg::deserialize_message(buffer, len_received, rinfo);
+
+    if (msg == nullptr || rinfo.err != ReceivedDataStatus::SUCCESS) { // Invalid message.
+        // TODO Poniżej jest komentarz dla serwera, zrobić go dla klienta.
+        // tga::io::log::err::message(message_text, player_id, addr);
+        // TODO Implement if needed ...
+    } else { // Valid message.
+        MsgHandlerPtr handler = make_handler(msg->messageType());
+        handler->handle(msg, rinfo);
+        // TODO I co, i tyle?
+        // TODO Ofc log
+    }
+}
+
 } // anonymous namespace
 
 /**
@@ -1327,15 +1427,6 @@ void setup() {
 }
 
 /**
- * @brief Returns the socket file descriptor.
- * 
- * @return The socket file descriptor.
- */
-int get_sockfd() {
-    return socket_fd;
-}
-
-/**
  * @brief Receives a message from the server.
  * 
  * This function reads a message from the server and returns it as a
@@ -1343,11 +1434,42 @@ int get_sockfd() {
  * 
  * @return The received message as a ReceiveInfo object.
  */
-ReceiveInfo receive_message() {  
-    // TODO Implement
-    return ReceiveInfo{};
+void receive_message() {  
+    ReceiveInfo rinfo;
+
+    ssize_t len_received = read(socket_fd, buffer, 0);
+    if (len_received < 0) {
+        tga::io::log::err::error("read");
+        close_connection();
+    } else if (len_received == 0) { // EOF, server disconnected
+        rinfo.err = ReceivedDataStatus::DISCONNECTED;
+        close_connection();
+    } else handle_received_message(len_received, rinfo);
+
+    // TODO I co, i tyle? Chyba trzeba sprawdzić rinfo.
 }
     
+// NOTE Tutaj jest czysty MsgPtr, ale może warto by tu uwzględnić inne rzeczy, jeśli trzeba ofc
+void send_message(MsgPtr msg) {
+    std::string serialized_message = msg->serialize();
+
+    // TODO Można to rozbić na namespace'y
+    if (tga::config::server) {
+        // TODO Implement
+    } else {
+        ssize_t len_sent = write(socket_fd, serialized_message.c_str(), serialized_message.size());
+        if (len_sent == -1) {
+            tga::io::log::err::error("`write`");
+            // TODO Handle error
+        } else if (len_sent != static_cast<ssize_t>(serialized_message.size())) {
+            tga::io::log::err::error("partial `write`: expected " +
+                    std::to_string(serialized_message.size()) +
+                    ", got " + std::to_string(len_sent));
+            // TODO Handle partial write - Czy wysyłamy ponownie?
+        }
+    }
+}
+
 } // namespace client
 
 /**
@@ -1358,26 +1480,6 @@ void setup() {
         tga::comm::server::setup();
     } else {
         tga::comm::client::setup();
-    }
-}
-
-void send_message(int fd, const Message &msg) {
-    std::string serialized_message = msg.serialize();
-
-    // TODO Można to rozbić na namespace'y
-    if (tga::config::server) {
-        // TODO Implement
-    } else {
-        ssize_t len_sent = write(fd, serialized_message.c_str(), serialized_message.size());
-        if (len_sent == -1) {
-            tga::io::log::err::error("`write`");
-            // TODO Handle error
-        } else if (len_sent != static_cast<ssize_t>(serialized_message.size())) {
-            tga::io::log::err::error("partial `write`: expected " +
-                    std::to_string(serialized_message.size()) +
-                    ", got " + std::to_string(len_sent));
-            // TODO Handle partial write - Czy wysyłamy ponownie?
-        }
     }
 }
 

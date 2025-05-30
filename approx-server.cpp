@@ -7,7 +7,13 @@
 #include "communication.h"
 #include "netutils.h"
 
+
 using tga::net::ReceiveInfo;
+using tga::io::log::err::error;
+using tga::config::debug;
+
+using tga::args::parse;
+using tga::args::print;
 
 using tga::comm::setup;
 using tga::comm::server::clear_revents;
@@ -24,8 +30,8 @@ using tga::comm::server::poll_events;
 using tga::comm::server::send_scores;
 
 int main(int argc, char* argv[]) {
-    tga::args::parse(argc, argv);
-    if (tga::config::debug) tga::args::print();
+    parse(argc, argv);
+    if (debug) print();
 
     setup();
 
@@ -37,7 +43,7 @@ int main(int argc, char* argv[]) {
 
         int poll_status = poll_events();
         if (poll_status < 0) { // Fail.
-            tga::io::log::err::error("poll");
+            error("poll");
             exit(1);
         } else if (poll_status == 0) { // Timeout.
             update_timeouts();

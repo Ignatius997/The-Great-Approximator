@@ -24,7 +24,6 @@ namespace err {
  */
 void error(const std::string &error_description) {
     std::cerr << "ERROR: " << error_description << std::endl;
-    if (tga::config::debug) exit(1);
 }
 
 /**
@@ -59,6 +58,10 @@ void game_end(const std::vector<std::pair<std::string, std::string>>& results) {
         std::cout << " " << player_id << " " << result;
     }
     std::cout << "." << std::endl;
+}
+
+void custom(const std::string &message) {
+    std::cout << message << std::endl;
 }
 
 namespace server {

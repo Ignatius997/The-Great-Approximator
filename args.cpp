@@ -31,7 +31,7 @@ static bool parse_uint(const std::string& str, unsigned min, unsigned max, unsig
 
 class ProgramArgs {
 protected:
-    unsigned port = 0;
+    unsigned port = 0; // Stored in host byte order.
 
 public:
     virtual void parse(int argc, char** argv) = 0;

@@ -25,6 +25,7 @@ namespace log {
 
     namespace info {
         void game_end(const std::vector<std::pair<std::string, std::string>>& results);
+        void custom(const std::string &message);
 
         namespace server {
             void new_client(const std::string& ip, uint16_t port);
