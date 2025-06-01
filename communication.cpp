@@ -134,7 +134,7 @@ protected:
     Rational calculate_function_value(size_t x) const {
         // Simply returns f(x) = c_0 + c_1 * x + c_2 * x^2 + ... + c_N * x^N
         Rational result = Rational("0");
-        for (size_t exp = 0; exp < tga::args::server::N(); ++exp) {
+        for (size_t exp = 0; exp <= tga::args::server::N(); ++exp) {
             result += coeffs[exp] * Rational(std::pow(static_cast<double>(x),
                                                     static_cast<double>(exp)));
         }
@@ -257,7 +257,7 @@ public:
 
     std::vector<Rational> get_coeffs() const {
         assert(phase != CommunicationPhase::PRE_GAME);
-        return std::vector<Rational>(coeffs, coeffs + tga::args::server::N());
+        return std::vector<Rational>(coeffs, coeffs + tga::args::server::N() + 1);
     }
 
     /**
@@ -265,9 +265,9 @@ public:
      * @param new_coeffs The coefficients to set.
      */
     void set_coeffs(std::vector<Rational> new_coeffs) {
-        assert(phase == CommunicationPhase::PRE_GAME);
-        assert(new_coeffs.size() == tga::args::server::N());
-        for (size_t i = 0; i < tga::args::server::N(); ++i) {
+        // assert(phase == CommunicationPhase::PRE_GAME); // FIXME This is actually not true
+        assert(new_coeffs.size() == tga::args::server::N() + 1);
+        for (size_t i = 0; i <= tga::args::server::N(); ++i) {
             coeffs[i] = new_coeffs[i];
         }
     }
@@ -673,10 +673,12 @@ int accept_new_client(const int family, SockAddrVariant &client_addr) {
     
     if (family == AF_INET) {
         sockfd = ipv4_socket_fd;
+        client_addr = sockaddr_in{}; // Initialize to IPv4 address.
         addr = (sockaddr *) (&std::get<sockaddr_in>(client_addr));
         addr_len = (socklen_t) sizeof(sockaddr_in);
     } else {
         sockfd = ipv6_socket_fd;
+        client_addr = sockaddr_in6{}; // Initialize to IPv6 address.
         addr = (sockaddr *) (&std::get<sockaddr_in6>(client_addr));
         addr_len = (socklen_t) sizeof(sockaddr_in6);
     }
@@ -799,7 +801,7 @@ public:
 
         if (conn.get_phase() != CommunicationPhase::PRE_GAME) {
             // Client is already baptised, but sent HELLO message.
-            tga::io::log::err::message(hello_msg.serialize(),
+            tga::io::log::err::server::message(hello_msg.serialize(),
                                     conn.get_client_id(),
                                     conn.get_addr());
             rinfo.err = ReceivedDataStatus::INVALID_TYPE;
@@ -834,7 +836,7 @@ public:
         // Check, if PUT message is sent in between
         // receiving earlier PUT and sending PUT response.
         if (conn.get_phase() != CommunicationPhase::WAITING_FOR_PUT) {
-            tga::io::log::err::message(
+            tga::io::log::err::server::message(
                 put_msg.serialize(),
                 conn.get_client_id(),
                 conn.get_addr());
@@ -851,7 +853,7 @@ public:
         // Check, if point or value is out of range.
         if (point > tga::args::server::K() || value < -5.0 || value > 5.0) {
             rinfo.err = ReceivedDataStatus::INVALID_VALUE;
-            tga::io::log::err::message(
+            tga::io::log::err::server::message(
                 put_msg.serialize(),
                 conn.get_client_id(),
                 conn.get_addr());
@@ -924,15 +926,14 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
 
     ClientConnection &conn = connections.at(idx);
     char *buffer = conn.get_buffer();
-    bool data_to_process = true;
     size_t data_left = len_received; // Remaining data to process.
 
-    while (data_to_process) {
+    while (data_left) {
         const size_t msg_start_idx = conn.get_msg_start_idx(); // Początek aktualnej wiadomości.
         
         std::string full_data(buffer + conn.get_buffer_pos(),
                             static_cast<size_t>(len_received));
-        const size_t first_crlf_idx = full_data.find('\r\n');
+        const size_t first_crlf_idx = full_data.find("\r\n");
         data_left = data_left - first_crlf_idx - 2; // -2 for '\r\n' itself.
 
         // new_pos: new buffer position; current_len: length of the current message.
@@ -942,18 +943,13 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
             current_len = new_pos - msg_start_idx; // Length of the current message.
         } else { // '\r\n' found, we can process the message.
             new_pos = conn.get_buffer_pos() + first_crlf_idx + 2; // +2 for '\r\n'.
-            current_len = new_pos - msg_start_idx - 2
+            current_len = new_pos - msg_start_idx - 2;
         }
-
-        const size_t new_pos = first_crlf_idx == std::string::npos ?
-                                conn.get_buffer_pos() + len_received :
-                                conn.get_buffer_pos() + first_crlf_idx + 2; // +2 for '\r\n'.
-        size_t current_len = new_pos - msg_start_idx; // Length of the current message.
 
         if (first_crlf_idx == std::string::npos) { // '\r\n' not found.
             if (current_len < max_msg_len) { // Message too long or incorrect.
                 rinfo.err = ReceivedDataStatus::INVALID_TYPE;
-                tga::io::log::err::message(
+                tga::io::log::err::server::message(
                     std::string(buffer + msg_start_idx, current_len),
                     conn.get_client_id(),
                     conn.get_addr());
@@ -965,13 +961,23 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
                 std::memcpy(buffer, buffer + msg_start_idx, current_len);
                 conn.set_buffer_pos(current_len);
                 conn.set_msg_start_idx(0);
+            } else {
+                // Buffer is not full, but no complete message to process yet.
+                conn.set_buffer_pos(new_pos);
             }
 
-            return; // No complete message to process yet.
+            break; // No complete message to process yet.
         }
 
+        /** NOTE Zrobić takie wizualne przedstawienie do każdej części.
+         * a b c \r \n d e f
+         * 0 1 2 3  4  5 6 7
+         * first_crlf_idx = 3
+         * msg_start_idx = 0
+         */
+
         MsgPtr msg = tga::msg::deserialize_message(buffer + msg_start_idx,
-                                            first_crlf_idx - msg_start_idx + 1,
+                                            first_crlf_idx - msg_start_idx + 2,
                                             rinfo);
         
         // FIXME Ale ten warunek brzydkko wygląda
@@ -985,7 +991,7 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
                 player_id = conn.get_client_id();
             }
 
-            tga::io::log::err::message(message_text, player_id, addr);
+            tga::io::log::err::server::message(message_text, player_id, addr);
             
             if (conn.get_phase() == CommunicationPhase::PRE_GAME) {
                 // First message from the client MUST BE a correct HELLO message.
@@ -998,6 +1004,10 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
         handler->handle(msg, idx, rinfo);
 
         if (rinfo.err == ReceivedDataStatus::SUCCESS) {
+            tga::io::log::info::server::received(
+                msg->serialize(),
+                conn.get_client_id(),
+                conn.get_addr());
             --messages_to_receive();
         }
     }
@@ -1007,44 +1017,6 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
     if (conn.get_buffer_pos() == conn.get_msg_start_idx()) {
         conn.set_buffer_pos(0);
         conn.set_msg_start_idx(0);
-    }
-    
-    // ==== GRANICA ZŁA ====
-    MsgPtr msg = tga::msg::deserialize_message(buffer, len_received, rinfo);
-    const auto &conn = connections.at(idx);
-
-    if (msg == nullptr || rinfo.err != ReceivedDataStatus::SUCCESS) { // Invalid message.
-        std::string message_text(buffer, len_received);
-        auto addr = conn.get_addr();
-        std::string player_id = "UNKNOWN";
-        if (conn.get_phase() != CommunicationPhase::PRE_GAME) {
-            player_id = conn.get_client_id();
-        }
-
-        tga::io::log::err::message(message_text, player_id, addr);
-        
-        if (conn.get_phase() == CommunicationPhase::PRE_GAME) {
-            // First message from the client MUST BE a correct HELLO message.
-            close_client_connection(idx);
-        }
-    } else { // Valid message.
-        // First message from the client MUST BE a correct HELLO message.
-        if (conn.get_phase() == CommunicationPhase::PRE_GAME &&
-                msg->messageType() != "HELLO") {
-            tga::io::log::err::message(
-                msg->serialize(),
-                conn.get_client_id(),
-                conn.get_addr());
-            close_client_connection(idx);
-            return;
-        }
-
-        MsgHandlerPtr handler = make_handler(msg->messageType());
-        handler->handle(msg, idx, rinfo);
-
-        if (rinfo.err == ReceivedDataStatus::SUCCESS) {
-            --messages_to_receive();
-        }
     }
 }
 
@@ -1248,13 +1220,18 @@ void handle_poll_event(const size_t idx) {
         ClientConnection &conn = connections.at(idx);
         char *buffer = conn.get_buffer();
         size_t pos = conn.get_buffer_pos();
-        size_t buffer_len = conn.get_buffer_len();
 
         ssize_t len_received = read(poll_fd.fd, buffer + pos, buffer_size - pos);
         if (len_received < 0) {
             tga::io::log::err::error("read from existing connection");
             close_client_connection(idx);
         } else if (len_received == 0) { // EOF, client disconnected.
+            tga::io::log::info::server::client_disconnected(
+                tga::net::get_ip(conn.get_addr()),
+                tga::net::get_port(conn.get_addr()),
+                conn.get_client_id());
+                // TODO Można zoptymalizować jakoś to, że cały czas marnujemy
+                // 3 linijki na get_ip, get_port, get_client_id
             rinfo.err = ReceivedDataStatus::DISCONNECTED;
             close_client_connection(idx);
         } else handle_received_data(idx, (size_t) len_received, rinfo);
@@ -1278,7 +1255,12 @@ void handle_poll_event(const size_t idx) {
         } else {
             conn.set_buffer_pos(buffer_pos + sent_bytes);
 
-            if (conn.get_buffer_pos() == buffer_len) {
+            if (conn.get_buffer_pos() == buffer_len) { // All data sent.
+                tga::io::log::info::server::sent(
+                    std::string(buffer, buffer_len),
+                    conn.get_client_id(),
+                    conn.get_addr());
+
                 if (conn.get_phase() == CommunicationPhase::END) {
                     close_client_connection(idx); // TODO Coś jeszcze?
                     
@@ -1349,7 +1331,10 @@ int socket_fd; // Socket file descriptor.
 uint16_t port; // Stored in host byte order.
 int family; // Address family (AF_INET or AF_INET6).
 
-char buffer[buffer_size]; // Buffer for receiving messages.
+char buffer[buffer_size] = {0}; // Buffer for receiving and sending messages.
+size_t buffer_pos = 0; // Current position in the buffer.
+size_t msg_start_idx = 0; // Start index of the current message in the buffer.
+// size_t buffer_len = 0; // Length of the current message in the buffer.
 
 /**
  * @brief Resolves a hostname to a SockAddrVariant for TCP connections.
@@ -1492,21 +1477,78 @@ MsgHandlerPtr make_handler(const std::string &msg_type) {
     }
 }
 
-void handle_received_message(const ssize_t len_received, ReceiveInfo &rinfo) {
+void handle_received_data(const ssize_t len_received, ReceiveInfo &rinfo) {
     assert(len_received > 0);
 
-    // FIXME Trzeba uwzględnić wścibski przypadek, kiedy mamy dwie wiadomości w buforze
-    MsgPtr msg = tga::msg::deserialize_message(buffer, len_received, rinfo);
+    size_t data_left = len_received; // Remaining data to process.
 
-    if (msg == nullptr || rinfo.err != ReceivedDataStatus::SUCCESS) { // Invalid message.
-        // TODO Poniżej jest komentarz dla serwera, zrobić go dla klienta.
-        // tga::io::log::err::message(message_text, player_id, addr);
-        // TODO Implement if needed ...
-    } else { // Valid message.
+    while (data_left) {
+        std::string full_data(buffer + buffer_pos,
+                            static_cast<size_t>(len_received));
+        const size_t first_crlf_idx = full_data.find("\r\n");
+        data_left = data_left - first_crlf_idx - 2; // -2 for '\r\n' itself.
+
+        // new_pos: new buffer position; current_len: length of the current message.
+        size_t new_pos, current_len;
+        if (first_crlf_idx == std::string::npos) {
+            new_pos = buffer_pos + len_received;
+            current_len = new_pos - msg_start_idx; // Length of the current message.
+        } else { // '\r\n' found, we can process the message.
+            new_pos = buffer_pos + first_crlf_idx + 2; // +2 for '\r\n'.
+            current_len = new_pos - msg_start_idx - 2;
+        }
+
+        if (first_crlf_idx == std::string::npos) { // '\r\n' not found.
+            if (current_len < max_msg_len) { // Message too long or incorrect.
+                rinfo.err = ReceivedDataStatus::INVALID_TYPE;
+                tga::io::log::err::client::message(
+                    std::string(buffer + msg_start_idx, current_len));
+                
+                buffer_pos = new_pos;
+                msg_start_idx = new_pos;
+            } else if (buffer_size - new_pos < min_len_to_read) { // Buffer is (almost) full.
+                // Move the unprocessed data to the beginning of the buffer.
+                std::memcpy(buffer, buffer + msg_start_idx, current_len);
+                buffer_pos = current_len;
+                msg_start_idx = 0;
+            } else {
+                // Buffer is not full, but no complete message to process yet.
+                buffer_pos = new_pos;
+            }
+
+            break; // No complete message to process yet.
+        }
+
+        /** NOTE Zrobić takie wizualne przedstawienie do każdej części.
+         * a b c \r \n d e f
+         * 0 1 2 3  4  5 6 7
+         * first_crlf_idx = 3
+         * msg_start_idx = 0
+         */
+
+        MsgPtr msg = tga::msg::deserialize_message(buffer + msg_start_idx,
+                                            first_crlf_idx - msg_start_idx + 2,
+                                            rinfo);
+        
+        if (msg == nullptr || rinfo.err != ReceivedDataStatus::SUCCESS) { // Invalid message.
+            std::string message_text(buffer, len_received);
+            tga::io::log::err::client::message(message_text);
+        }
+
+        // Message is valid.
         MsgHandlerPtr handler = make_handler(msg->messageType());
         handler->handle(msg, rinfo);
-        // TODO I co, i tyle?
-        // TODO Ofc log
+
+        if (rinfo.err == ReceivedDataStatus::SUCCESS) {
+            tga::io::log::info::client::received(msg->serialize());
+        }
+    }
+
+    // Update the buffer position and message start index,
+    // if possible without copying.
+    if (buffer_pos == msg_start_idx) {
+        buffer_pos = 0;
+        msg_start_idx = 0;
     }
 }
 
@@ -1545,14 +1587,14 @@ void setup() {
 void receive_message() {  
     ReceiveInfo rinfo;
 
-    ssize_t len_received = read(socket_fd, buffer, 0); // FIXME Czemu było 0?
+    ssize_t len_received = read(socket_fd, buffer, buffer_size);
     if (len_received < 0) {
         tga::io::log::err::error("read");
         close_connection();
     } else if (len_received == 0) { // EOF, server disconnected
         rinfo.err = ReceivedDataStatus::DISCONNECTED;
         close_connection();
-    } else handle_received_message(len_received, rinfo);
+    } else handle_received_data(len_received, rinfo);
 
     // TODO I co, i tyle? Chyba trzeba sprawdzić rinfo.
 }
@@ -1561,21 +1603,28 @@ void receive_message() {
 void send_message(MsgPtr msg) {
     std::string serialized_message = msg->serialize();
 
-    // TODO Można to rozbić na namespace'y
-    if (tga::config::server) {
-        // TODO Implement
-    } else {
+    size_t to_send = serialized_message.size();
+    
+    while (to_send > 0) {
         ssize_t len_sent = write(socket_fd, serialized_message.c_str(), serialized_message.size());
-        if (len_sent == -1) {
-            tga::io::log::err::error("`write`");
-            // TODO Handle error
-        } else if (len_sent != static_cast<ssize_t>(serialized_message.size())) {
-            tga::io::log::err::error("partial `write`: expected " +
-                    std::to_string(serialized_message.size()) +
-                    ", got " + std::to_string(len_sent));
-            // TODO Handle partial write - Czy wysyłamy ponownie?
+
+        if (len_sent < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                len_sent = 0; // Not able to write right now, try later.
+            }
+            else {
+                tga::io::log::err::error("write");
+                close_connection();
+                exit(1); // FIXME Is this safe? Should we maybe `return`?
+            }
+        }
+        else {
+            to_send -= (size_t)len_sent;
+            // TODO Czy powinniśmy coś odczekać, żeby nie zapchać tego gniazda.
         }
     }
+
+    tga::io::log::info::client::sent(serialized_message);
 }
 
 } // namespace client

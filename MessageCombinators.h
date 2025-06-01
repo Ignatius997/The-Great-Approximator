@@ -56,7 +56,17 @@ public:
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
     std::string messageType() const override final { return msg_type; }
     std::string messageContent() const override {
-        return tga::io::file::read_coeffs();
+        std::string content;
+
+        for (const auto& coeff : coeffs) {
+            content += static_cast<std::string>(coeff) + " ";
+        }
+
+        if (!content.empty()) {
+            content.pop_back(); // Remove the last space
+        }
+        
+        return content;
     }
 };
 

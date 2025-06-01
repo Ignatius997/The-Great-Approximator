@@ -26,11 +26,13 @@ void error(const std::string &error_description) {
     std::cerr << "ERROR: " << error_description << std::endl;
 }
 
+namespace server {
+
 /**
  * @brief Print an error message to stderr in
- * "ERROR: bad message from [ip]:port, player: message_type\n" format.
+ * "ERROR: bad message from [ip]:port, player: <message>\n" format.
  * 
- * @param message_type The type of the message.
+ * @param message The message.
  * @param player The player who sent the message.
  * @param addr The address of the sender.
  */
@@ -41,6 +43,22 @@ void message(const std::string &message,
     auto port = tga::net::get_port(addr);
     std::cerr << "ERROR: bad message from [" << ip << "]:" << port
               << ", " << player << ": " << message << std::endl;
+}
+
+} // namespace server
+
+namespace client {
+
+/**
+ * @brief Print an error message to stderr in
+ * "ERROR: bad message from server: <message>\n" format.
+ * 
+ * @param message The message.
+ */
+void message(const std::string &message) {
+    std::cerr << "ERROR: bad message from server: " << message << std::endl;
+}
+
 }
 
 } // namespace err
@@ -84,7 +102,7 @@ void new_client(const std::string& ip, uint16_t port) {
  * @param player_id The ID of the player.
  */
 void client_known(const std::string& ip, uint16_t port, const std::string& player_id) {
-    std::cout << ip << ":" << port << " is now known as " << player_id << "." << std::endl;
+    std::cout << "[" << ip << "]:" << port << " is now known as " << player_id << "." << std::endl;
 }
 
 /**
@@ -129,6 +147,45 @@ void send_state(const std::vector<std::string>& state, const std::string& player
         std::cout << " " << s;
     }
     std::cout << " to " << player_id << "." << std::endl;
+}
+
+void client_disconnected(const std::string& ip, uint16_t port, const std::string& player_id) {
+    std::cout << "Client [" << ip << "]:" << port << " with player ID " << player_id
+              << " disconnected." << std::endl;
+}
+
+/**
+ * @brief Print a log when a message is received from a player.
+ * 
+ * @param message The message received.
+ * @param player_id The ID of the player who sent the message.
+ * @param addr The address of the sender.
+ */
+void received(const std::string& message, const std::string& player_id, const SockAddrVariant& addr) {
+    size_t pos = message.find("\r\n");
+    std::string cut_msg = (pos != std::string::npos) ? message.substr(0, pos) : message;
+    
+    std::cout << "Received message " << cut_msg
+              <<" from player " << player_id
+              << " at address [" << tga::net::get_ip(addr) << "]:"
+              << tga::net::get_port(addr) << std::endl;
+}
+
+/**
+ * @brief Print a log when a message is sent to a player.
+ * 
+ * @param message The message sent.
+ * @param player_id The ID of the player who received the message.
+ * @param addr The address of the recipient.
+ */
+void sent(const std::string& message, const std::string& player_id, const SockAddrVariant& addr) {
+    size_t pos = message.find("\r\n");
+    std::string cut_msg = (pos != std::string::npos) ? message.substr(0, pos) : message;
+    
+    std::cout << "Sent message " << cut_msg
+              <<" to player " << player_id
+              << " at address [" << tga::net::get_ip(addr) << "]:"
+              << tga::net::get_port(addr) << std::endl;
 }
 
 } // namespace server
@@ -184,6 +241,22 @@ void received_state(const std::vector<std::string>& state) {
     std::cout << "." << std::endl;
 }
 
+/**
+ * @brief Print a message when the client receives a message from the server.
+ * @param message The message received from the server.
+ */
+void received(const std::string &message) {
+    size_t pos = message.find("\r\n");
+    std::string cut_msg = (pos != std::string::npos) ? message.substr(0, pos) : message;
+    std::cout << "Received message from server: " << cut_msg << std::endl;
+}
+
+void sent(const std::string &message) {
+    size_t pos = message.find("\r\n");
+    std::string cut_msg = (pos != std::string::npos) ? message.substr(0, pos) : message;
+    std::cout << "Sent message to server: " << cut_msg << std::endl;
+}
+
 } // namespace client
 
 } // namespace info
@@ -196,6 +269,16 @@ namespace {
     size_t current_line = 0; // Line to be read next.
 }
 
+/**
+ * @brief Sets the coefficients file to be read.
+ * This function sets the file with coefficients to be read by the `read_coeffs` function.
+ * 
+ * @param file The path to the coefficients file.
+ */
+void set_coeffs_file(const std::string& file) {
+    coeffs_file = file;
+    tga::io::log::info::custom("Coefficients file set to: " + file);
+}
 
 // NOTE Not tested
 /**
@@ -229,7 +312,7 @@ std::string read_coeffs() {
     assert(line_number <= current_line); // Should not occur.
     ++current_line; // Increment for the next read.
 
-    file.close();
+    file.close(); // FIXME For sure?
     return line;
 }
 

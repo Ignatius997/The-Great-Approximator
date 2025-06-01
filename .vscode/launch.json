@@ -18,7 +18,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/approx-server",
-            "args": ["-p", "12345", "-f", "coeffs.txt"],
+            "args": ["-p", "12346", "-f", "coeffs.txt"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

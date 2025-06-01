@@ -83,8 +83,10 @@ public:
                 }
             } else if (arg == "-f" && i + 1 < argc) {
                 if (file_set) tga::io::log::err::error("Parameter -f specified multiple times");
-                file_set = true;
+                // TODO To jest trochę frajerskie, nie musimy w sumie pamiętać file w args.
                 file = argv[++i];
+                tga::io::file::set_coeffs_file(file);
+                file_set = true;
             } else {
                 tga::io::log::err::error("Unknown or incomplete argument: " + arg);
                 std::exit(1);
@@ -239,19 +241,29 @@ namespace server {
  * @note MUST be called after `parse()`.
  * @return M value.
  */
-unsigned M() {
+size_t M() {
     assert(parsed);
     static size_t m = static_cast<ServerArgs*>(args.get())->getM();
     return m;
 }
 
-unsigned N() {
+/**
+ * @brief returns N value (explained in README).
+ * @note MUST be called after `parse()`.
+ * @return N value.
+ */
+size_t N() {
     assert(parsed);
     static size_t n = static_cast<ServerArgs*>(args.get())->getN();
     return n;
 }
 
-unsigned K() {
+/**
+ * @brief returns K value (explained in README).
+ * @note MUST be called after `parse()`.
+ * @return K value.
+ */
+size_t K() {
     assert(parsed);
     static size_t k = static_cast<ServerArgs*>(args.get())->getK();
     return k;

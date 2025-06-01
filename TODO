@@ -5,10 +5,6 @@ sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
 i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
 
 ERROR
-handle_received_data
-ZMODYFIKOWAĆ ODBIERANIE WIADOMOŚCI NA TCP-OWE (patrz poniżej)!!!
-Odbieranie wiadomości
-Wysyłanie wiadomości
 Po prostu KLIENT
 Patologiczne sytuacje z buforowaniem wysyłania i odbieraniem takiego szajsu (patrz poniżej)
 ERROR
@@ -30,6 +26,7 @@ TODO Można zrobić tak, że w trakcie oczekiwania na komunikaty od klienta,
     serwer w innym wątku oblicza swoje wartości aproksymacji
 
 TODO Zamienić constexpr char * na constexpr const char *
+TODO Ujednolicić handle_received_data
 
 TODO Komunikacja:
     a) setup server-DONE client-DONE
@@ -163,3 +160,4 @@ NOTE DONE:
 25. Handle-owanie errorów w read-write DONE
 26. Zakończenie gry po otrzymaniu wystarczającej liczby komunikatów DONE
 27. Rozbij MessageHandler na ServerMessageHandler i ClientMessageHandler DONE
+28. Sending and receiving a message by client scheme.

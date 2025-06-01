@@ -12,9 +12,9 @@ void parse(int argc, char** argv);
 void print();
 
 namespace server {
-    unsigned M();
-    unsigned N();
-    unsigned K();
+    size_t M();
+    size_t N();
+    size_t K();
 }
 namespace client {
     std::string server();

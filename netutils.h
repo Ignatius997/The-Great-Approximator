@@ -52,7 +52,6 @@ enum ReceivedDataStatus {
     DISCONNECTED,   // Client/server disconnected.
     INVALID_TYPE,   // Unresolved or not the expected message type.
     INVALID_FORMAT, // Wrong format for the message type
-    INVALID_LENGTH, // Wrong length of message data.
     INVALID_VALUE   // Invalid value in the message data.
 };
 

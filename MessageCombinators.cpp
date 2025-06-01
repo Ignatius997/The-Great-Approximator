@@ -42,15 +42,16 @@ std::map<std::string, Deserializer> deserializers = {
  * 
  * @param msg_body The body of the message to extract coefficients from.
  * @param rinfo Reference to ReceiveInfo to store error information.
- * @param exp_size Expected size of the coefficients vector.
  * @return std::optional<std::vector<Rational>> A vector of Rational numbers
  *         if extraction is successful, otherwise std::nullopt.
+ * 
+ * @note This function assumes, that there is an appropriate
+ * number of coefficients to extract. 
  */
 std::optional<std::vector<Rational>> extract_coeffs(const std::string &msg_body,
-                                                    ReceiveInfo &rinfo,
-                                                    const size_t exp_size) {
-    std::string full_regex = std::string("^") + rational_regex + R"((?: )" +
-                             rational_regex + R"()*)\r\n$)";
+                                                    ReceiveInfo &rinfo) {
+    std::string full_regex = "^" + std::string(rational_regex) +
+                         "(?: " + rational_regex + ")*\\r\\n$";
     static const std::regex re(full_regex);
     std::smatch match;
     if (!std::regex_match(msg_body, match, re)) {
@@ -66,15 +67,6 @@ std::optional<std::vector<Rational>> extract_coeffs(const std::string &msg_body,
 
     for (auto it = numbers_begin; it != numbers_end; ++it) {
         coeffs.emplace_back(it->str());
-        if (coeffs.size() > exp_size) { // Too many coefficients
-            rinfo.err = ReceivedDataStatus::INVALID_LENGTH;
-            return std::nullopt;
-        }
-    }
-
-    if (coeffs.size() != exp_size) { // Incorrect number of coefficients
-        rinfo.err = ReceivedDataStatus::INVALID_LENGTH;
-        return std::nullopt;
     }
 
     return std::optional<std::vector<Rational>>(std::move(coeffs));
@@ -92,11 +84,11 @@ std::set <std::string> message_types_expected_by_client = {
 
 MsgPtr HelloMessage::deserialize(const std::string &msg_body,
                                             ReceiveInfo &rinfo) {
-    std::string full_regex = std::string("^") + player_id_regex + R"(\r\n$)";
+    std::string full_regex = std::string("^(") + player_id_regex + R"()\r\n$)";
     static const std::regex re(full_regex); // $player_id\r\n
     std::smatch match;
 
-    if (std::regex_match(msg_body, match, re)) {
+    if (!std::regex_match(msg_body, match, re)) {
         rinfo.err = ReceivedDataStatus::INVALID_FORMAT;
         return nullptr;
     }
@@ -107,13 +99,13 @@ MsgPtr HelloMessage::deserialize(const std::string &msg_body,
 
 // TODO Przetestować te regexy
 MsgPtr CoeffMessage::deserialize(const std::string& msg_body, ReceiveInfo& rinfo) {
-    auto coeffs = extract_coeffs(msg_body, rinfo, tga::args::server::N() + 1);
+    auto coeffs = extract_coeffs(msg_body, rinfo);
     return coeffs.has_value() ? std::make_unique<CoeffMessage>(std::move(*coeffs)) :
                                 nullptr;
 }
 
 MsgPtr StateMessage::deserialize(const std::string& msg_body, ReceiveInfo& rinfo) {
-    auto coeffs = extract_coeffs(msg_body, rinfo, tga::args::server::K() + 1);
+    auto coeffs = extract_coeffs(msg_body, rinfo);
     return coeffs.has_value() ? std::make_unique<StateMessage>(*coeffs) :
                                 nullptr;
 }
@@ -207,7 +199,7 @@ MsgPtr ScoringMessage::deserialize(const std::string& msg_body, ReceiveInfo& rin
  * code in @p rinfo and returns nullptr.
  *
  * @param buffer Pointer to the buffer containing the serialized message.
- * @param len_received The number of bytes received in the buffer.
+ * @param msg_len Length of the message (with CRLF at the end).
  * @param rinfo Reference to a ReceiveInfo structure where error information will be stored.
  * @return MsgPtr A unique pointer to the deserialized message object on success,
  *         or nullptr if deserialization fails (with error details set in @p rinfo).
@@ -220,9 +212,9 @@ MsgPtr ScoringMessage::deserialize(const std::string& msg_body, ReceiveInfo& rin
  *       indicating the reason for failure (e.g., INVALID_FORMAT, INVALID_TYPE).
  */
 MsgPtr deserialize_message(const char *buffer,
-                                            const size_t len_received,
-                                            ReceiveInfo &rinfo) {
-    std::string full_msg(buffer, static_cast<size_t>(len_received));    
+                        const size_t msg_len,
+                        ReceiveInfo &rinfo) {
+    std::string full_msg(buffer, static_cast<size_t>(msg_len));    
     const size_t first_space_idx = full_msg.find(' ');
 
     if (first_space_idx == std::string::npos) { // No space found.
