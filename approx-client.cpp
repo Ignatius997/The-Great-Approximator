@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
         } else if (poll_status > 0) { // Success.
             handle_poll_event(0); // Poll event for server.
             
-            if (tga::args::client::default_strategy()) {
+            if (!tga::args::client::default_strategy()) {
                 handle_poll_event(1); // Poll event for stdin.
             }
         }

@@ -771,7 +771,7 @@ void prepare_to_send(const size_t idx, MsgPtr msg) {
     assert(msg_len < buffer_size);
 
     // Switch to writing.
-    poll_descriptors.at(idx).events = POLLOUT;
+    poll_descriptors.at(idx).events |= POLLOUT;
 
     // Prepare buffer
     BufferManager &bufman = conn.buffer_manager;
@@ -936,10 +936,6 @@ public:
                                     std::move(v));
             conn.set_timeout_meaning(TimeoutMeaning::SEND_DELAY);
             conn.set_timeout_message(std::move(timeout_msg));
-
-            if (messages_to_receive() <= 2) {
-                tga::io::log::info::custom("\nŁEE ŁEE ŁEE BRATAN\n");
-            }
 
             timeouts.emplace(idx, conn.get_state_delay());
             poll_descriptors.at(idx).events = 0; // Reset events to avoid unwanted ones.
@@ -1588,6 +1584,8 @@ public:
         if (tga::args::client::default_strategy()) {
             // TODO Napisać gdzieś tę default-ową strategię.
             send_next_put();
+        } else {
+            poll_descriptors.at(1).events = POLLIN; // Set to read from stdin.
         }
     }
 };
@@ -1669,6 +1667,39 @@ MsgHandlerPtr make_handler(const std::string &msg_type) {
     }
 }
 
+void process_pairs(std::string &full_data, size_t &data_left, ReceiveInfo &rinfo) {
+    // Process pairs of lines from stdin.
+    size_t first_lf_idx = full_data.find("\n");
+    while (first_lf_idx != std::string::npos && data_left > 0) {
+        std::string pair = full_data.substr(0, first_lf_idx);
+        full_data.erase(0, first_lf_idx + 1); // +1 for '\n'
+        data_left -= first_lf_idx + 1;
+
+        // Split the pair into point and value.
+        size_t space_idx = pair.find(' ');
+        if (space_idx == std::string::npos) {
+            rinfo.err = ReceivedDataStatus::INVALID_TYPE;
+            // TODO Napisać taki komunikat.
+            tga::io::log::err::server::input(pair);
+            continue; // Skip invalid input
+        }
+
+        // NOTE Not sure if correct in handling errors.
+        size_t point = std::stoul(pair.substr(0, space_idx));
+        double value = std::stod(pair.substr(space_idx + 1));
+
+        if (value < -5.0 || value > 5.0) {
+            rinfo.err = ReceivedDataStatus::INVALID_VALUE;
+            // TODO Napisać taki komunikat.
+            tga::io::log::err::server::input(pair);
+            continue; // Skip invalid input
+        }
+
+        MsgPtr put_msg = std::make_unique<PutMessage>(point, Rational(value));
+        prepare_to_send(std::move(put_msg));
+    }
+}
+
 void handle_received_data(const ssize_t len_received, const size_t idx, ReceiveInfo &rinfo) {
     assert(len_received > 0);
 
@@ -1681,6 +1712,12 @@ void handle_received_data(const ssize_t len_received, const size_t idx, ReceiveI
 
         std::string full_data(buffer + bufman.get_buffer_pos(),
                             static_cast<size_t>(data_left));
+
+        if (idx == 1) { // Reading from stdin.
+            process_pairs(full_data, data_left, rinfo);
+            return; // TODO Ok?
+        }
+
         const size_t first_crlf_idx = full_data.find("\r\n");
         data_left = data_left - first_crlf_idx - 2; // -2 for '\r\n' itself.
 
@@ -1792,11 +1829,11 @@ void setup() {
     });
 
 
-    if (tga::args::client::default_strategy()) {
+    if (!tga::args::client::default_strategy()) {
         // Add another poll descriptor for reading for stdin.
         poll_descriptors.push_back( (pollfd) {
             .fd = STDIN_FILENO,
-            .events = POLLIN,
+            .events = 0, // Ignore stdin till receiving COEFF.
             .revents = 0,
         });
     }
@@ -1882,8 +1919,8 @@ void prepare_to_send(MsgPtr msg) {
 
     assert(msg_len < buffer_size);
 
-    // Switch to writing.
-    poll_descriptors.at(0).events = POLLOUT;
+    // Switch to writing writing.
+    poll_descriptors.at(0).events |= POLLOUT;
 
     // Prepare buffer
     BufferManager &bufman = buffer_managers[0];
@@ -1916,10 +1953,15 @@ void handle_poll_event(const size_t idx) {
         } else if (len_received == 0) { // EOF, server disconnected.
             tga::io::log::info::client::server_disconnected(); // TODO trza rozrozniac ok disc i notok disck
             rinfo.err = ReceivedDataStatus::DISCONNECTED;
-            close_connection(idx);
+            // FIXME Kod brzydki jak cholera, trzeba to rozdzielic na obsluga serwera i stdin
+            if (idx == 0) close_connection(idx);
             exit(1); // FIXME BRZYDKIE
         } else handle_received_data(len_received, idx, rinfo);
     }
+
+    // TODO Czy nasz program jest bezpieczny na sytuację POLLIN & POLLOUT?
+    buffer_pos = bufman.get_buffer_pos();
+    buffer_len = bufman.get_buffer_len();
 
     if ((poll_fd.revents & POLLOUT) != 0) {
         BufferManager &bufman = buffer_managers[idx];
@@ -1931,7 +1973,7 @@ void handle_poll_event(const size_t idx) {
         if (sent_bytes < 0) {
             tga::io::log::err::error("write");
             close_connection(idx);
-        } else {
+        } else if (sent_bytes > 0) {
             bufman.set_buffer_pos(buffer_pos + sent_bytes);
 
             if (bufman.get_buffer_pos() == buffer_len) { // All data sent.
@@ -1942,12 +1984,8 @@ void handle_poll_event(const size_t idx) {
 
                 tga::io::log::info::client::sent(std::string(buffer, buffer_len));
                 
-                if (tga::args::client::default_strategy() || pre_game) {
-                    poll_fd.events = POLLIN; // Switch to reading - wait for response.
-                    pre_game = false;
-                } else {
-                    // TODO Coś w głupiej strategii i nie HELLO?
-                }
+                poll_fd.events |= POLLIN; // Switch to reading - wait for response.
+                pre_game = false; // FIXME Do czegoś to potrzebne?
 
             // TODO CO ROBIC w bloku poniżej?
             } else {

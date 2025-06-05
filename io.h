@@ -23,6 +23,7 @@ namespace log {
             void message(const std::string &message,
                 const std::string &player,
                 const SockAddrVariant &addr);
+            void input(const std::string &input);
         }
 
         namespace client {

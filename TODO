@@ -5,6 +5,7 @@ sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
 i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
 
 ERROR
+TODO Zrobić pollfd na conn klienta podczas PUTa na POLLIN & POLLOUT, żeby można było przyjmować i wysyłać wiadomości.
 klient bez -a
 scoring przed bad put / state
 SCORING się pieprzy przy dwoch klientach o tej samej nazwie

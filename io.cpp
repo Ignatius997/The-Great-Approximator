@@ -45,6 +45,10 @@ void message(const std::string &message,
               << ", " << player << ": " << message << std::endl;
 }
 
+void input(const std::string &input) {
+    std::cerr << "ERROR: invalid input line: " << input << std::endl;
+}
+
 } // namespace server
 
 namespace client {
@@ -284,9 +288,8 @@ void set_coeffs_file(const std::string& file) {
     tga::io::log::info::custom("Coefficients file set to: " + file);
 }
 
-// NOTE Not tested
 /**
- * @brief Reads coefficients from a file named "coeffs.txt".
+ * @brief Reads coefficients from a file with coefficients.
  * 
  * This function attempts to open file with coefficients and read from it one line
  * storing it into a string. If the file cannot be opened, it logs an error and exits the program.
