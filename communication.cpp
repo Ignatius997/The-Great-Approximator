@@ -936,6 +936,11 @@ public:
                                     std::move(v));
             conn.set_timeout_meaning(TimeoutMeaning::SEND_DELAY);
             conn.set_timeout_message(std::move(timeout_msg));
+
+            if (messages_to_receive() <= 2) {
+                tga::io::log::info::custom("\nŁEE ŁEE ŁEE BRATAN\n");
+            }
+
             timeouts.emplace(idx, conn.get_state_delay());
             poll_descriptors.at(idx).events = 0; // Reset events to avoid unwanted ones.
 
@@ -1309,16 +1314,6 @@ void handle_poll_event(const size_t idx) {
     ClientConnection &conn = connections.at(idx);
     BufferManager &bufman = conn.buffer_manager;
 
-    // FIXME Delete below
-    // Print revents
-    tga::io::log::info::custom(
-        "revents for client " + std::to_string(idx) + ": " +
-        std::to_string(poll_fd.revents));
-
-    if (poll_fd.revents & POLLERR) {
-        tga::io::log::info::custom("POLLERR, errno = " + std::to_string(errno));
-    }
-
     // TODO To w końcu z POLLERR czy bez?
     if ((poll_fd.revents & (POLLIN | POLLERR)) != 0) {
         char *buffer = bufman.get_buffer();
@@ -1408,7 +1403,7 @@ int poll_events() {
         const auto &tv = timeouts.top().second;
         timeout = tv.tv_sec * 1000 + tv.tv_usec / 1000; // Convert to miliseconds.
     }
-    (void) connections; // TODO Delete
+
     return poll(poll_descriptors.data(),
             (nfds_t) poll_descriptors.size(),
             timeout);
@@ -1680,11 +1675,6 @@ void handle_received_data(const ssize_t len_received, const size_t idx, ReceiveI
     BufferManager &bufman = buffer_managers[idx];
     char *buffer = bufman.get_buffer();
     size_t data_left = len_received; // Remaining data to process.
-
-    // TODO Delete it
-    if (data_left > 50) {
-        tga::io::log::info::custom("THIS IS PROLLY IT!");
-    }
 
     while (data_left) {
         const size_t msg_start_idx = bufman.get_msg_start_idx();
