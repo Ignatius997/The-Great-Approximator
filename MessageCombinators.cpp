@@ -159,7 +159,7 @@ MsgPtr ScoringMessage::deserialize(const std::string& msg_body, ReceiveInfo& rin
     }
 
     // Extract players ids and their scores.
-    static const std::regex pair_re(std::string(player_id_regex) + " " + rational_regex);
+    static const std::regex pair_re("(" + std::string(player_id_regex) + ") (" + rational_regex + ")");
     auto it = std::sregex_iterator(msg_body.begin(), msg_body.end(), pair_re);
     auto end = std::sregex_iterator();
 

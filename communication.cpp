@@ -115,7 +115,7 @@ public:
      * @param pos The new position in the client's buffer.
      */
     void set_buffer_pos(size_t pos) {
-        assert(pos <= buffer_len);
+        // assert(pos <= buffer_len);
         buffer_pos = pos;
     }
 
@@ -183,6 +183,7 @@ protected:
     std::string client_id = empty_string; // Client ID, set after HELLO message, empty in default.
     SockAddrVariant addr; // Address of the client.
 
+    size_t messages_received = 0; // Number of messages received from the client.
     size_t penalty = 0; // Penalty for the client.
 
     /**
@@ -293,7 +294,8 @@ public:
      */
     void approx_add(size_t point, double value) {
         assert(point <= 10000);
-        assert(value >= -5.0 && value <= 5.0);
+        // TODO Uncomment line below.
+        // assert(value >= -5.0 && value <= 5.0);
         client_approximations[point] += Rational(value);
     }
 
@@ -403,6 +405,9 @@ public:
 
         return score;
     }
+
+    size_t get_messages_received() const { return messages_received; }
+    void increment_messages_to_receive() { messages_received++; }
 };
 
 /**
@@ -524,14 +529,14 @@ public:
      * 
      * @param idx The index to remove.
      */
-    // void remove_by_idx(size_t idx) {
-    //     auto it = std::find_if(data.begin(), data.end(),
-    //         [idx](const Pair& p) { return p.first == idx; });
-    //     if (it != data.end()) {
-    //         data.erase(it);
-    //         std::make_heap(data.begin(), data.end(), cmp);
-    //     }
-    // }
+    void remove_by_idx(size_t idx) {
+        auto it = std::find_if(data.begin(), data.end(),
+            [idx](const Pair& p) { return p.first == idx; });
+        if (it != data.end()) {
+            data.erase(it);
+            std::make_heap(data.begin(), data.end(), cmp);
+        }
+    }
 
     /**
      * @brief Executes the given function for each element in the queue.
@@ -628,6 +633,15 @@ void setup_socket(int &sockfd, const int family) {
     }
 }
 
+/**
+ * @brief Returns reference to variable holding number of
+ * correct messages left to receive from the clients.
+ */
+size_t& messages_to_receive() {
+    static size_t count = tga::args::server::M();
+    return count;
+}
+
 void close_client_connection(const int idx) {
     if (tga::config::debug) {
         // TODO Napisać oddzielny log do zamykania połączeń
@@ -640,7 +654,8 @@ void close_client_connection(const int idx) {
     
     auto it = connections.find(idx);
     if (it != connections.end()) {
-        // TODO Czy należy coś robić z conn (it->second)?
+        // Do not count messages sent by this client
+        messages_to_receive() += it->second.get_messages_received();
         connections.erase(it);
     }
     
@@ -791,15 +806,6 @@ std::vector<Rational> convert_coeffs_string_to_vector(std::string coeffs_str) {
     return coeffs_vec;
 }
 
-/**
- * @brief Returns reference to variable holding number of
- * correct messages left to receive from the clients.
- */
-size_t& messages_to_receive() {
-    static size_t count = tga::args::server::M();
-    return count;
-}
-
 // ==== Message handlers ====
 
 class ServerMessageHandler : public MessageHandler {
@@ -839,6 +845,8 @@ public:
      * @param rinfo Information about the received message.
      */
     void handle(const MsgPtr &msg, const size_t idx, ReceiveInfo &rinfo) override {
+        timeouts.remove_by_idx(idx); // Remove HELLO timeout, if it exists.
+        
         ClientConnection &conn = connections.at(idx);
         HelloMessage hello_msg = dynamic_cast<HelloMessage &>(*msg);
 
@@ -888,9 +896,11 @@ public:
             if (conn.get_phase() == CommunicationPhase::SENDING_PUT_RESPONSE) {
                 // Prepare for sending PENALTY and impose a penalty.
                 auto penalty_msg = std::make_unique<PenaltyMessage>(point, value);
-                prepare_to_send(idx, std::move(penalty_msg));                
+                prepare_to_send(idx, std::move(penalty_msg));      
                 conn.impose_penalty(20); // FIXME Magiczna stała
             }
+
+            return; // Do not process PUT message.
         }
 
         // Check, if point or value is out of range.
@@ -907,6 +917,7 @@ public:
             conn.set_timeout_meaning(TimeoutMeaning::SEND_DELAY);
             conn.set_timeout_message(std::move(timeout_msg));
             timeouts.emplace(idx, bad_put_delay);
+            conn.impose_penalty(10); // FIXME Magiczna stała.
         } else { // Correct PUT message.
             // Check, if client is in the correct phase.
             if (conn.get_phase() != CommunicationPhase::WAITING_FOR_PUT) return;
@@ -926,9 +937,15 @@ public:
             conn.set_timeout_meaning(TimeoutMeaning::SEND_DELAY);
             conn.set_timeout_message(std::move(timeout_msg));
             timeouts.emplace(idx, conn.get_state_delay());
+            poll_descriptors.at(idx).events = 0; // Reset events to avoid unwanted ones.
 
             assert(messages_to_receive() > 0);
             --messages_to_receive();
+            conn.increment_messages_to_receive();
+
+            if (messages_to_receive() == 0) {
+                tga::io::log::info::custom("\nALL RECEIVED\n");
+            }
         }
     }
 };
@@ -983,7 +1000,7 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
         const size_t msg_start_idx = bufman.get_msg_start_idx();
         
         std::string full_data(buffer + bufman.get_buffer_pos(),
-                            static_cast<size_t>(len_received));
+                            static_cast<size_t>(data_left));
         const size_t first_crlf_idx = full_data.find("\r\n");
         data_left = data_left - first_crlf_idx - 2; // -2 for '\r\n' itself.
 
@@ -1028,7 +1045,7 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
          */
 
         MsgPtr msg = tga::msg::deserialize_message(buffer + msg_start_idx,
-                                            first_crlf_idx - msg_start_idx + 2,
+                                            first_crlf_idx + 2,
                                             rinfo);
         
         // FIXME Ale ten warunek brzydkko wygląda
@@ -1060,6 +1077,9 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
                 conn.get_client_id(),
                 conn.get_addr());
         }
+
+        bufman.set_buffer_pos(new_pos);
+        bufman.set_msg_start_idx(new_pos);
     }
 
     // Update the buffer position and message start index,
@@ -1068,6 +1088,19 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
         bufman.set_buffer_pos(0);
         bufman.set_msg_start_idx(0);
     }
+}
+
+void reset_all_data() {
+    // Clear all connections and poll descriptors (except the ones for new clients).
+    connections.clear();
+    poll_descriptors.erase(poll_descriptors.begin() + 2, poll_descriptors.end());
+    free_poll_indices = std::queue<size_t>();
+
+    // Reset the number of messages to receive.
+    messages_to_receive() = tga::args::server::M();
+
+    // Reset the timeouts.
+    timeouts = ModifiableIdxTvPriorityQueue();
 }
 
 } // anonymous namespace
@@ -1106,10 +1139,13 @@ void update_timeouts() {
     // Initialize `previous_time` on first call.
     static timeval previous_time = current_time;
 
-    timeval diff = {
-        current_time.tv_sec - previous_time.tv_sec,
-        current_time.tv_usec - previous_time.tv_usec,
-    };
+    long sec = current_time.tv_sec - previous_time.tv_sec;
+    long usec = current_time.tv_usec - previous_time.tv_usec;
+    if (usec < 0) {
+        --sec;
+        usec += 1000000;
+    }
+    timeval diff = { sec, usec };
     timeouts.update_timeouts(diff);
 
     previous_time = current_time;
@@ -1121,6 +1157,11 @@ void handle_timeouts() {
     
     auto _handle_timeout = [](const std::pair<size_t, timeval> &el) {
         size_t idx = el.first;
+
+        if (connections.find(idx) == connections.end()) {
+            // Connection does not exist, skip it.
+            return;
+        }
 
         auto &conn = connections.at(idx);
         auto timeout_meaning = conn.get_timeout_meaning();
@@ -1140,6 +1181,7 @@ void handle_timeouts() {
              * within the expected time after establishing connection, to which
              * server responds with closing the connection with the client.
              */
+            tga::io::log::err::error("Client did not send HELLO message within the expected time.");
             close_client_connection(idx);
         } else if (timeout_meaning == TimeoutMeaning::SEND_DELAY) {
             // Send the delayed message.
@@ -1182,7 +1224,6 @@ void setup() {
     setup_socket(ipv6_socket_fd, AF_INET6);
 
     // Configure two first descriptors to await for new connections.
-    poll_descriptors.reserve(2);
     poll_descriptors.push_back( (pollfd) {
         .fd = ipv4_socket_fd,
         .events = POLLIN,
@@ -1268,6 +1309,16 @@ void handle_poll_event(const size_t idx) {
     ClientConnection &conn = connections.at(idx);
     BufferManager &bufman = conn.buffer_manager;
 
+    // FIXME Delete below
+    // Print revents
+    tga::io::log::info::custom(
+        "revents for client " + std::to_string(idx) + ": " +
+        std::to_string(poll_fd.revents));
+
+    if (poll_fd.revents & POLLERR) {
+        tga::io::log::info::custom("POLLERR, errno = " + std::to_string(errno));
+    }
+
     // TODO To w końcu z POLLERR czy bez?
     if ((poll_fd.revents & (POLLIN | POLLERR)) != 0) {
         char *buffer = bufman.get_buffer();
@@ -1299,7 +1350,7 @@ void handle_poll_event(const size_t idx) {
                                 buffer_len - buffer_pos);
 
         if (sent_bytes < 0) {
-            tga::io::log::err::error("write to existing connection");
+            tga::io::log::err::error("write");
             if (errno != EINTR) { // Unless interrupted by a signal.
                 close_client_connection(idx);
             }
@@ -1323,17 +1374,25 @@ void handle_poll_event(const size_t idx) {
                          * "odczekuje 1 sekundę i rozpoczyna pracę od początku",
                          * jednak czy oznacza to, że ma spać?
                          */
+
+                        // TODO Reset ALL the data (except program args)
+                        reset_all_data();
+
                         sleep(1);
                     }
 
                 } else {
-                    // Reset buffer for the next message.
+                    // Since we sent all data, we can reset the buffer.
                     bufman.set_buffer_pos(0);
                     bufman.set_buffer_len(0);
                     bufman.set_msg_start_idx(0);
 
-                    poll_fd.events = POLLIN; // Switch to reading.
-                    conn.set_phase(CommunicationPhase::WAITING_FOR_PUT);
+                    if (messages_to_receive() > 0) {
+                        poll_fd.events = POLLIN; // Switch to reading.
+                        conn.set_phase(CommunicationPhase::WAITING_FOR_PUT);
+                    } else {
+                        poll_fd.events = 0; // No more events to handle.
+                    }
                 }
             }
         }
@@ -1349,6 +1408,7 @@ int poll_events() {
         const auto &tv = timeouts.top().second;
         timeout = tv.tv_sec * 1000 + tv.tv_usec / 1000; // Convert to miliseconds.
     }
+    (void) connections; // TODO Delete
     return poll(poll_descriptors.data(),
             (nfds_t) poll_descriptors.size(),
             timeout);
@@ -1406,7 +1466,7 @@ BufferManager buffer_managers[2];
 std::vector<pollfd> poll_descriptors;
 
 std::vector<Rational> coefficients; // Coefficients received from the server.
-size_t coeffs_idx = 0; // For sending PUT in default strategy.
+size_t func_arg = 0; // For sending PUT in default strategy.
 
 bool pre_game = true; // TODO Ulepszyć to?
 
@@ -1468,25 +1528,40 @@ void close_connection(const size_t idx) {
     }
 }
 
+// FIXME Powtórzenie metody z serwera
+Rational calculate_function_value(const size_t x) {
+    // Simply returns f(x) = c_0 + c_1 * x + c_2 * x^2 + ... + c_N * x^N
+    Rational result = Rational("0");
+    for (size_t exp = 0; exp < coefficients.size(); ++exp) {
+        result += coefficients[exp] * Rational(std::pow(static_cast<double>(x),
+                                                static_cast<double>(exp)));
+    }
+    return result;
+}
+
 void send_next_put() {
     assert(tga::args::client::default_strategy());
+    static std::vector<Rational> function_values;
 
-    if (coeffs_idx < coefficients.size()) {
-        while (coeffs_idx < coefficients.size() &&
-                coefficients.at(coeffs_idx) == Rational(0)) {
-            ++coeffs_idx; // Skip zero coefficients.
-        }
-        
-        if (coeffs_idx >= coefficients.size()) {
-            return; // No more coefficients to send.
-            // TODO CO WTEdy?
-        }
+    // TODO Liczyć z góry?
+    if (function_values.size() < func_arg + 1) {
+        function_values.push_back(calculate_function_value(func_arg));
+    }
 
-        MsgPtr put_msg = std::make_unique<PutMessage>(
-                                coeffs_idx,
-                                coefficients.at(coeffs_idx));
-        prepare_to_send(std::move(put_msg));
-        ++coeffs_idx;
+    Rational value = function_values[func_arg];
+    if (value > Rational(5.0)) {
+        value = Rational(5.0);
+    } else if (value < Rational(-5.0)) {
+        value = Rational(-5.0);
+    }
+
+    function_values[func_arg] -= value;
+
+    MsgPtr put_msg = std::make_unique<PutMessage>(func_arg, value);
+    prepare_to_send(std::move(put_msg));
+    
+    if (function_values[func_arg] == Rational(0)) {
+        ++func_arg;
     }
 }
 
@@ -1529,8 +1604,11 @@ public:
         (void) rinfo; // Unused parameters
         
         if (tga::args::client::default_strategy()) {
-            send_next_put();
-        } // TODO Should we do something in `else`
+            // This message probably means, that `point` in PUT message
+            // was wrong, so simply cease sending messages.
+        } else {
+            // TODO Should we do sth in `else`?
+        }
     }
 };
 
@@ -1574,9 +1652,6 @@ public:
                 tga::io::log::err::error("Your score is not available.");
             }
         }
-
-        // FIXME Ugly, should be in approx-client.cpp
-        exit(0); // Exit the client after receiving SCORING message.
     }
 };
 
@@ -1606,11 +1681,16 @@ void handle_received_data(const ssize_t len_received, const size_t idx, ReceiveI
     char *buffer = bufman.get_buffer();
     size_t data_left = len_received; // Remaining data to process.
 
+    // TODO Delete it
+    if (data_left > 50) {
+        tga::io::log::info::custom("THIS IS PROLLY IT!");
+    }
+
     while (data_left) {
         const size_t msg_start_idx = bufman.get_msg_start_idx();
 
         std::string full_data(buffer + bufman.get_buffer_pos(),
-                            static_cast<size_t>(len_received));
+                            static_cast<size_t>(data_left));
         const size_t first_crlf_idx = full_data.find("\r\n");
         data_left = data_left - first_crlf_idx - 2; // -2 for '\r\n' itself.
 
@@ -1653,21 +1733,29 @@ void handle_received_data(const ssize_t len_received, const size_t idx, ReceiveI
          */
 
         MsgPtr msg = tga::msg::deserialize_message(buffer + msg_start_idx,
-                                            first_crlf_idx - msg_start_idx + 2,
+                                            first_crlf_idx + 2,
                                             rinfo);
         
         if (msg == nullptr || rinfo.err != ReceivedDataStatus::SUCCESS) { // Invalid message.
             std::string message_text(buffer, len_received);
             tga::io::log::err::client::message(message_text);
+            return; // Do not process the message
         }
 
         // Message is valid.
         MsgHandlerPtr handler = make_handler(msg->messageType());
-        handler->handle(msg, rinfo); // FIXME Chyba nigdszie nie używane jest rinfo.
+        handler->handle(msg, rinfo);
+        // FIXME Chyba nigdszie nie używane jest rinfo.
 
         if (rinfo.err == ReceivedDataStatus::SUCCESS) {
             tga::io::log::info::client::received(msg->serialize());
         }
+
+        bufman.set_buffer_pos(new_pos);
+        bufman.set_msg_start_idx(new_pos);
+
+        // FIXME Brzydkie.
+        if (msg->messageType() == "SCORING") exit(0);
     }
 
     // Update the buffer position and message start index,
@@ -1844,21 +1932,24 @@ void handle_poll_event(const size_t idx) {
     }
 
     if ((poll_fd.revents & POLLOUT) != 0) {
-        BufferManager bufman = buffer_managers[idx];
+        BufferManager &bufman = buffer_managers[idx];
 
         ssize_t sent_bytes = write(poll_fd.fd,
                                 buffer + buffer_pos,
                                 buffer_len - buffer_pos);
 
         if (sent_bytes < 0) {
-            tga::io::log::err::error("write to existing connection");
-            if (errno != EINTR) { // Unless interrupted by a signal.
-                close_connection(idx);
-            }
+            tga::io::log::err::error("write");
+            close_connection(idx);
         } else {
             bufman.set_buffer_pos(buffer_pos + sent_bytes);
 
             if (bufman.get_buffer_pos() == buffer_len) { // All data sent.
+                // Reset the buffer.
+                bufman.set_buffer_pos(0);
+                bufman.set_buffer_len(0);
+                bufman.set_msg_start_idx(0);
+
                 tga::io::log::info::client::sent(std::string(buffer, buffer_len));
                 
                 if (tga::args::client::default_strategy() || pre_game) {

@@ -5,6 +5,8 @@ sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
 i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
 
 ERROR
+scoring przed bad put / state
+SCORING się pieprzy przy dwoch klientach o tej samej nazwie
 Buforowanie wysyłania, żeby wiadomości na siebie nie nachodziły
 Poprawic obsluge odebrania M komunikatow.
 Nie działa obsługa timeoutu dla HELLO
