@@ -241,6 +241,10 @@ void received_state(const std::vector<std::string>& state) {
     std::cout << "." << std::endl;
 }
 
+void server_disconnected() {
+    std::cout << "Server disconnected." << std::endl;
+}
+
 /**
  * @brief Print a message when the client receives a message from the server.
  * @param message The message received from the server.

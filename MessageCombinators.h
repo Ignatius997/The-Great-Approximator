@@ -68,6 +68,13 @@ public:
         
         return content;
     }
+    /**
+     * @brief Returns the coefficients of the polynomial.
+     * @return A vector of Rational numbers representing the coefficients.
+     */
+    std::vector<Rational> getCoefficients() const {
+        return coeffs; // TODO Chyba można nawet zrobić move.
+    }
 };
 
 // ==== Game Messages ====
@@ -80,12 +87,12 @@ class StateMessage : public Message {
 private:
     // TODO Is this correct? What if we change this approx?
     // NOTE Change K to the actual size of the approximation
-    const std::vector<Rational> &approx; // Approximation of the function. approx.size() == K.
+    std::vector<Rational> approx; // Approximation of the function. approx.size() == K.
 
 public:
     static constexpr const char *msg_type = "STATE";
 
-    StateMessage(const std::vector<Rational> &approx) : approx(approx) {}
+    StateMessage(std::vector<Rational> approx) : approx(std::move(approx)) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
     std::string messageType() const override final { return msg_type; }
     std::string messageContent() const override {
@@ -168,12 +175,12 @@ public:
  */
 class ScoringMessage : public Message {
 private:
-    const std::map<std::string, Rational> &scores;
+    std::map<std::string, Rational> scores;
 
 public:
     static constexpr const char *msg_type = "SCORING";
 
-    ScoringMessage(std::map<std::string, Rational> scores) : scores(std::move(scores)) {}
+    ScoringMessage(std::map<std::string, Rational> scores) : scores(scores) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
     std::string messageType() const override final { return msg_type; }
     // NOTE Check, if the order of players is correct in the for loop. I think yes.
@@ -189,6 +196,14 @@ public:
         }
 
         return content;
+    }
+
+    /**
+     * @brief Returns the scores of the players.
+     * @return A map of player IDs to their scores.
+     */
+    std::map<std::string, Rational> getScores() const {
+        return scores; // TODO Chyba można nawet zrobić move.
     }
 };
 

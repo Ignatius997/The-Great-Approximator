@@ -53,6 +53,8 @@ namespace log {
             void putting_value(const std::string& value, int point);
             void received_state(const std::vector<std::string>& state);
             
+            void server_disconnected();
+
             // NOTE One są do debugowania, bo nie chce mi się na razie zajmowac wyspecyfikowanymi wiadomościami
             void received(const std::string &message);
             void sent(const std::string &message);

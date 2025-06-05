@@ -28,6 +28,7 @@ using tga::comm::server::new_ipv6_clients;
 using tga::comm::server::new_clients;
 using tga::comm::server::poll_events;
 using tga::comm::server::send_scores;
+using tga::comm::server::should_send_scores;
 
 int main(int argc, char* argv[]) {
     parse(argc, argv);
@@ -48,6 +49,11 @@ int main(int argc, char* argv[]) {
         } else if (poll_status == 0) { // Timeout.
             update_timeouts();
             handle_timeouts();
+
+            // NOTE: Explanation, why sending scores is here in documentation.
+            if (should_send_scores()) {
+                send_scores();
+            }
         } else { // success
             update_timeouts();
             handle_timeouts();
@@ -59,10 +65,6 @@ int main(int argc, char* argv[]) {
             for (size_t i = 2; i < poll_structure_size(); ++i) {
                 if (connection_exists(i)) {
                     handle_poll_event(i);
-                    if (get_messages_to_receive() == 0) {
-                        send_scores();
-                        break;
-                    }
                 }
             }
         }

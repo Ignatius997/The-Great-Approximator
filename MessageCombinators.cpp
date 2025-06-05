@@ -113,7 +113,7 @@ MsgPtr StateMessage::deserialize(const std::string& msg_body, ReceiveInfo& rinfo
 std::optional<std::pair<size_t, Rational>> PVMessage::deserialize_helper(
                                                     const std::string& msg_body,
                                                     ReceiveInfo& rinfo) {
-    std::string regex_str = std::string(R"(^(\d+) )") + rational_regex + R"(\r\n$)";
+    std::string regex_str = std::string(R"(^(\d+) )") + "(" + rational_regex + ")" + R"(\r\n$)";
     static const std::regex re(regex_str);
     std::smatch match;
 
@@ -149,8 +149,8 @@ MsgPtr PenaltyMessage::deserialize(const std::string& msg_body, ReceiveInfo& rin
 }
 
 MsgPtr ScoringMessage::deserialize(const std::string& msg_body, ReceiveInfo& rinfo) {
-    std::string full_regex = std::string("^") + player_id_regex + " " + rational_regex +
-                            R"((?: )" + player_id_regex + " " + rational_regex + R"()*)\r\n$)";
+    std::string full_regex = "^" + std::string(player_id_regex) + " " + rational_regex +
+                         "(?: " + player_id_regex + " " + rational_regex + ")*\\r\\n$";
     static const std::regex re(full_regex);
 
     if (!std::regex_match(msg_body, re)) {
@@ -177,7 +177,7 @@ MsgPtr ScoringMessage::deserialize(const std::string& msg_body, ReceiveInfo& rin
         }
         last_id = player_id;
 
-        results.at(player_id) = result; // Insert or update the score.
+        results.insert({player_id, result});
     }
 
     return std::make_unique<ScoringMessage>(std::move(results));

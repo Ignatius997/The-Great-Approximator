@@ -19,21 +19,28 @@ namespace server {
     size_t poll_structure_size();
 
     void clear_revents();
+    int poll_events();
+    void handle_poll_event(const size_t idx);
+
     void update_timeouts();
     void handle_timeouts();
-    void handle_poll_event(const size_t idx);
     void new_clients(const int family);
     void send_scores();
-    int poll_events();
 
     bool connection_exists(const size_t idx);
     bool new_ipv4_clients();
     bool new_ipv6_clients();
+    bool should_send_scores();
 }
 
 namespace client {
-    void send_message(MsgPtr msg);
-    void receive_message();
+    void clear_revents();
+    int  poll_events();
+    void prepare_to_send(MsgPtr msg);
+    void handle_poll_event(const size_t idx);
+
+    // void send_message(MsgPtr msg);
+    // void receive_message();
 }
 
 void setup();

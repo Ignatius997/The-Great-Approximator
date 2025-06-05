@@ -118,12 +118,13 @@ protected:
     std::string server;
     bool force_ipv4 = false;
     bool force_ipv6 = false;
-    bool strategy_a = false;
+    bool default_strategy = false;
 
 public:
     void parse(int argc, char** argv) override final {
         bool player_id_set = false, server_set = false, port_set = false;
-        int ipv4_count = 0, ipv6_count = 0, strategy_a_count = 0;
+        int ipv4_count = 0, ipv6_count = 0, strategy_count = 0;
+
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
             if (arg == "-u" && i + 1 < argc) {
@@ -155,8 +156,8 @@ public:
                 force_ipv6 = true;
                 ipv6_count++;
             } else if (arg == "-a") {
-                strategy_a = true;
-                strategy_a_count++;
+                default_strategy = true;
+                strategy_count++;
             } else {
                 tga::io::log::err::error("Unknown or incomplete argument: " + arg);
                 std::exit(1);
@@ -171,8 +172,6 @@ public:
         }
     }
 
-    std::string getServer() { return server; }
-
     /**
      * @brief Returns the address family based on the command line arguments.
      * @return AF_INET for IPv4, AF_INET6 for IPv6, or AF_UNSPEC if neither is specified.
@@ -185,6 +184,8 @@ public:
     }
 
     std::string getPlayerId() { return player_id; }
+    bool get_default_strategy() { return default_strategy; }
+    std::string getServer() { return server; }
 
     void print() const override final {
         std::cout << "ClientArgs:\n";
@@ -193,7 +194,7 @@ public:
         std::cout << "  port = " << port << "\n";
         std::cout << "  force_ipv4 = " << (force_ipv4 ? "true" : "false") << "\n";
         std::cout << "  force_ipv6 = " << (force_ipv6 ? "true" : "false") << "\n";
-        std::cout << "  strategy_a = " << (strategy_a ? "true" : "false") << "\n";
+        std::cout << "  strategy_a = " << (default_strategy ? "true" : "false") << "\n";
     }
 };
 
@@ -301,6 +302,16 @@ std::string player_id() {
 int family() {
     assert(parsed);
     return static_cast<ClientArgs*>(args.get())->getFamily();
+}
+
+/**
+ * @brief returns true if default strategy is used.
+ * @note MUST be called after `parse()`.
+ * @return true if default strategy is used, false otherwise.
+ */
+bool default_strategy() {
+    assert(parsed);
+    return static_cast<ClientArgs*>(args.get())->get_default_strategy();
 }
 
 } // namespace client

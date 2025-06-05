@@ -5,6 +5,13 @@ sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
 i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
 
 ERROR
+Buforowanie wysyłania, żeby wiadomości na siebie nie nachodziły
+Poprawic obsluge odebrania M komunikatow.
+Nie działa obsługa timeoutu dla HELLO
+O błędy z timeoutami, cos sie pieprzyu w handle_timeouts
+Zamień klienta na poll-owego (zobacz errory niezdefiniowanych funkcji w approx-client) DONE
+clear_revents, poll_events, handle_received_data jest (prawie) IDENTYCZNE dla klienta i serwera
+Handler-y klienta ...
 Po prostu KLIENT
 Patologiczne sytuacje z buforowaniem wysyłania i odbieraniem takiego szajsu (patrz poniżej)
 ERROR
@@ -27,6 +34,9 @@ TODO Można zrobić tak, że w trakcie oczekiwania na komunikaty od klienta,
 
 TODO Zamienić constexpr char * na constexpr const char *
 TODO Ujednolicić handle_received_data
+
+TODO Napisać w dokumentacji jak dziala timeout: gdy jest pozostaloscia, to po prostu wystapi, ale nie obsluzony
+Wiadomosci po M dodawaniach są ignorowane.
 
 TODO Komunikacja:
     a) setup server-DONE client-DONE

@@ -12,13 +12,19 @@
             "problemMatcher": ["$gcc"]
         }
     ],
+      "compounds": [
+        {
+        "name": "Debug client and server",
+        "configurations": ["Debug TGA Server", "Debug TGA Client"]
+        }
+    ],
     "configurations": [
         {
             "name": "Debug TGA Server",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/approx-server",
-            "args": ["-p", "12346", "-f", "coeffs.txt"],
+            "args": ["-p", "12300", "-f", "coeffs.txt", "-k", "10", "-m", "12"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
@@ -38,7 +44,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/approx-client",
-            "args": ["-u", "player", "-s", "127.0.0.1", "-p", "12345"],
+            "args": ["-u", "player", "-s", "127.0.0.1", "-p", "12302", "-a"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

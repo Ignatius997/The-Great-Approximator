@@ -16,10 +16,12 @@ namespace server {
     size_t N();
     size_t K();
 }
+
 namespace client {
     std::string server();
     std::string player_id();
     int family();
+    bool default_strategy();
 }
 
 unsigned port();
