@@ -1,100 +1,20 @@
 NOTE TODO:
-Zbigniew Jurkiewicz mówi, że POLLERR bierze się stąd, że kiedy w trakcie
-np. read-a lub innej funkcji systemowej nadejdzie sygnał, lub nastąpi inna
-sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
-i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
+DOKUMENTACJA Strategia POLLIN-ów i POLLOUT-ów: ustawiaj ekskluzywne POLLOUT tylko wtedy, gdy to konieczne
+DOKUMENTACJA Serwer po wykonaniu M dodawań ignoruje wiadomości od klientów.
+DOKUMENTACJA Zapisać gdzieś, że wiadomości wysyłane przez klientów po M dodawaniach są ignorowane.
 
-Strategia POLLIN-ów i POLLOUT-ów: ustawiaj ekskluzywne POLLOUT tylko wtedy, gdy to konieczne
-Serwer po wykonaniu M dodawań ignoruje wiadomości od klientów.
-
-TODO Przypadek z tym poznym HELLO obczaic
-
-ERROR
-DONE Klient z wczytywaniem z pliku
-DONE Polaczenia powinny być two-way: na pollin i pollout.
-DONE Ustawianie odpowiedniej fazy
-
-TODO Zrobić pollfd na conn klienta podczas PUTa na POLLIN & POLLOUT, żeby można było przyjmować i wysyłać wiadomości.
-DONE klient bez -a
-DONE scoring przed bad put / state
-SCORING się pieprzy przy dwoch klientach o tej samej nazwie
-Buforowanie wysyłania, żeby wiadomości na siebie nie nachodziły
-Poprawic obsluge odebrania M komunikatow.
-Nie działa obsługa timeoutu dla HELLO
-O błędy z timeoutami, cos sie pieprzyu w handle_timeouts
-Zamień klienta na poll-owego (zobacz errory niezdefiniowanych funkcji w approx-client) DONE
-clear_revents, poll_events, handle_received_data jest (prawie) IDENTYCZNE dla klienta i serwera
-Handler-y klienta ...
-Po prostu KLIENT
-Patologiczne sytuacje z buforowaniem wysyłania i odbieraniem takiego szajsu (patrz poniżej)
-ERROR
-
-ODBIERANIE WIADOMOŚCI: Patrz kartka
-
-Zapisać gdzieś, że wiadomości wysyłane przez klientów po M dodawaniach są ignorowane.
-
-TODO Jak to jest z buforowaniem wysyłania? Czy klient może odczytać np. pół komunikatu?
-TODO Czy w ogóle należy obsługiwać jakieś patologiczne sytuacje, że na przykład otrzymano pół komunikatu
-    i jako że później może zostać przesłana brakująca połowa, to czeka się na to, co zostanie dosłanego następnie? 
-TODO Czy możliwe jest, że w jednym odebranym komunikacie będzie >1 wiadomość, np. gdy klient szybko wyśle 2 wiadomości?
-    TAK!
-    Wtedy w sumie wszystko działa, ale trzeba to jeszcze obsłużyć u serwera.
-
-TODO Widać lukę w MessageHandler: Klienmtowi nie potrzebne jest idx, a zatem mamy dwie klasy Handler-ów: klientowi i serwerowi.
+    Widać lukę w MessageHandler: Klienmtowi nie potrzebne jest idx, a zatem mamy dwie klasy Handler-ów: klientowi i serwerowi.
     Coraz bardziej widać, że trzeba będzie zrobić oddzielne pliki dla klienta i serwera.
 
-TODO Obczaić pierwszy podpunkt pytania na forum zadanego w czwartek, 22 maja 2025, 21:05
-TODO Można zrobić tak, że w trakcie oczekiwania na komunikaty od klienta,
-    serwer w innym wątku oblicza swoje wartości aproksymacji
-
-TODO Zamienić constexpr char * na constexpr const char *
+TODO Logi
+    Zjebany adres w logach
+TODO Rozłączanie itd
 TODO Ujednolicić handle_received_data
+TODO Zoptymalizować make_handler w communication, bo aktualnie bezsensownie tworzymy nowy obiekt w każdym wywołaniu, podczas gdy może on być static.
+TODO Przypadek z tym poznym HELLO obczaic
+TODO Sygnały?
+TODO Może jakoś ograniczyc te zmienne globalne, bo ciężko się połapać, np port w args
 
-TODO Napisać w dokumentacji jak dziala timeout: gdy jest pozostaloscia, to po prostu wystapi, ale nie obsluzony
-Wiadomosci po M dodawaniach są ignorowane.
-
-TODO Komunikacja:
-    a) setup server-DONE client-DONE
-    b) zgloszenie się klienta, czyli wyslanie HELLO DONE
-    c) przyjęcie nowego klienta w TCP DONE
-    d) obsłużenie HELLO przez klienta ...
-    d1) zaimplementować deserializację wiadomości w Message z użyciem ReceiveInfo DONE
-    d2) zmienić obsługę poll-ów. DONE
-    f) timeout w serwrze DONE
-    g) Implementacja MessageHandlerów DONE dla serwera.
-
-    y) obsługa sygnałów dla debugowania, ażeby przetestować sprzątanie
-    z) test ...
-
-TODO Operatory porównania w netutils dla sockaddr_in i sockaddr_in6 są dość kontrowersyjne, bo porównują rodzinę (która chyba powinna być taka sama).
-TODO Jeśli trzeba, napisać odpowiednie kosntruktory i operatory porównania dla Message, żeby można było robić na nich std::move.
-
-TODO Może zoptymalizować tga::comm::server::clear_revents()
-
-TODO Metody get_message_type powinny być const, albo powinny to być po prostu const pola
-TODO Czy optymalniej jest miec Rational w std::string czy może char[X], jeśli istnieje jakieś X
-
-TODO Zoptymalizować make_handler w communication, bo aktualnie bezsensownie
-    tworzymy nowy obiekt w każdym wywołaniu, podczas gdy może on być static.
-
-TODO Przeczytać poniższe przed rozpoczęciem implementacji klienta:
-SPOJRZENIE ADRIANA NA SENS GRY:
-    ja to widzę w ten sposób:
-    1. tak ta gra jest bardzo nudna
-    2. to, że klient bez flagi -a wczytuje polecenia z wejścia i mogą to być brednie nie ma znaczenia, bo wtedy oddajemy kontrolę użytkownikowi i to jego sprawa
-    3. obliczanie wielomianu w jakimś punkcie jest trywialne, to prawda, ale potem uświadomiłem sobie, że element strategii pojawia się w innym miejscu. mianowicie chodzi o to, że w komunikacie put masz limit na maksymalną modyfikację aproksymacji jaką możesz wykonać, więc jest szansa, że potrzebujesz kilka komunikatów dla jednego punktu. i wtedy być może ma znaczenie w jakiej kolejności będziesz uzupełniał aproksymacje dla punktów (bo wynik to suma różnic między wartością wielomianu, a twoją aproksymacją)
-    4. limit komunikatów odbieranych przez serwer w pewnym sensie uwydatnia istotność decyzji, który punkt będziemy aproksymować najpierw, a może wszystkie równomiernie, po kolei
-    5. z obliczeniami zmiennoprzecinkowymi to chyba w ogólności jest tak, że są problematyczne pod względem precyzji. trochę nadziei może dawać to, że typ double może trzymać znacznie więcej cyfr po przecinku niż 7, więc może się nie wykrzaczy przy tak małej liczbie
-
-18. Zamień te gettery typu `requests_handled` na `get_requests_handled`.
-19. Czy na pewno zrobiono walidację argumentów w ProgramArgs?
-
-Q8. W związku z dużą ilością include-ów iostream itd, czy należy robić jakieś deklarowanie obiektu iostream,
-    tak jak to miało miejsce w jednym z mini-projektów na KPCPP?
-Q12. Aktualny rozmiar bufora to 8 KB. Może dac więcej?
-
-Może jakoś ograniczyc te zmienne globalne, bo ciężko się połapać, np port w args
-Możnaby ewentualnie zoptymalizować te log-i żeby było przenoszenie, ale to już lekka przesada
 
 NOTE Q&A:
 Q1. C czy C++?

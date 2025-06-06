@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 #include <optional>
+#include <algorithm>
 
 #include "Message.h"
 #include "io.h"
@@ -35,9 +36,9 @@ public:
 
     explicit HelloMessage(const std::string& id) : player_id(id) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-    std::string messageType() const override final { return msg_type; }
-    std::string messageContent() const override { return player_id; }
-    std::string getPlayerID() const { return player_id; }
+    std::string message_type() const override final { return msg_type; }
+    std::string message_content() const override { return player_id; }
+    std::string get_player_id() const { return player_id; }
 };
 
 /**
@@ -54,8 +55,8 @@ public:
 
     CoeffMessage(std::vector<Rational> coeffs) : Message(), coeffs(std::move(coeffs)) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-    std::string messageType() const override final { return msg_type; }
-    std::string messageContent() const override {
+    std::string message_type() const override final { return msg_type; }
+    std::string message_content() const override {
         std::string content;
 
         for (const auto& coeff : coeffs) {
@@ -72,7 +73,7 @@ public:
      * @brief Returns the coefficients of the polynomial.
      * @return A vector of Rational numbers representing the coefficients.
      */
-    std::vector<Rational> getCoefficients() const {
+    std::vector<Rational> get_coefficients() const {
         return coeffs; // TODO Chyba można nawet zrobić move.
     }
 };
@@ -94,8 +95,8 @@ public:
 
     StateMessage(std::vector<Rational> approx) : approx(std::move(approx)) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-    std::string messageType() const override final { return msg_type; }
-    std::string messageContent() const override {
+    std::string message_type() const override final { return msg_type; }
+    std::string message_content() const override {
         std::string content;
 
         for (const auto& coeff : approx) {
@@ -123,11 +124,11 @@ public:
     static std::optional<std::pair<size_t, Rational>> deserialize_helper(
                                                     const std::string& msg_body,
                                                     ReceiveInfo& rinfo);
-    std::string messageContent() const override final {
+    std::string message_content() const override final {
         return std::to_string(point) + " " + static_cast<std::string>(value);
     }
-    size_t getPoint() const { return point; }
-    Rational getValue() const { return value; }
+    size_t get_point() const { return point; }
+    Rational get_value() const { return value; }
 };
 
 /**
@@ -140,7 +141,7 @@ public:
 
     using PVMessage::PVMessage; // Inherit constructor
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo& rinfo);
-    std::string messageType() const override final { return msg_type; }
+    std::string message_type() const override final { return msg_type; }
 };
 
 /**
@@ -152,7 +153,7 @@ public:
     static constexpr const char *msg_type = "BAD_PUT";
     using PVMessage::PVMessage; // Inherit constructor
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo& rinfo);
-    std::string messageType() const override final { return msg_type; }
+    std::string message_type() const override final { return msg_type; }
 };
 
 /**
@@ -164,7 +165,7 @@ public:
     static constexpr const char *msg_type = "PENALTY";
     using PVMessage::PVMessage; // Inherit constructor
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-    std::string messageType() const override final { return msg_type; }
+    std::string message_type() const override final { return msg_type; }
 };
 
 // ==== Endgame Messages ====
@@ -182,9 +183,9 @@ public:
 
     ScoringMessage(std::vector<std::pair<std::string, Rational>> scores) : scores(scores) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
-    std::string messageType() const override final { return msg_type; }
+    std::string message_type() const override final { return msg_type; }
     // NOTE Check, if the order of players is correct in the for loop. I think yes.
-    std::string messageContent() const override {
+    std::string message_content() const override {
         std::string content;
 
         // Sort the scores lexicographically by player id (ASCII order)
@@ -201,7 +202,7 @@ public:
         if (!content.empty()) {
             content.pop_back(); // Remove the last space
         }
-        
+
         return content;
     }
 

@@ -7,7 +7,10 @@
 #include <variant>
 #include <cstring>
 
-// ==== Comparison operators for tga::net::SockAddrVariant ====
+/** Comparison operators for tga::net::SockAddrVariant
+ * Those operators are just for convenience, so that we can use
+ * SockAddrVariant in std::set, std::map, etc.
+ */
 
 inline bool operator==(const sockaddr_in& a, const sockaddr_in& b) {
     return a.sin_family == b.sin_family &&

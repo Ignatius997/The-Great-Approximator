@@ -20,7 +20,7 @@ public:
      * 
      * @return A string representing the message type.
      */
-    virtual std::string messageType() const = 0;
+    virtual std::string message_type() const = 0;
 
     /**
      * @brief Returns the content of the message.
@@ -30,7 +30,7 @@ public:
      * 
      * @return A string representing the message content.
      */
-    virtual std::string messageContent() const = 0;
+    virtual std::string message_content() const = 0;
 
     /**
      * @brief Serializes the message into a string format.
@@ -41,7 +41,7 @@ public:
      * @return A serialized string representation of the message.
      */
     std::string serialize() const {
-        return messageType() + " " + messageContent() + "\r\n";
+        return message_type() + " " + message_content() + "\r\n";
     }
 
     virtual ~Message() = default; // Virtual destructor for proper inheritance

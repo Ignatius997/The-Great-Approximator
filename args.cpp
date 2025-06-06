@@ -177,15 +177,15 @@ public:
      * @return AF_INET for IPv4, AF_INET6 for IPv6, or AF_UNSPEC if neither is specified.
      * @note This function is used to determine the address family for socket creation.
      */
-    int getFamily() {
+    int get_family() {
         if (force_ipv4) return AF_INET;
         if (force_ipv6) return AF_INET6;
         return AF_UNSPEC;
     }
 
-    std::string getPlayerId() { return player_id; }
+    std::string get_player_id() { return player_id; }
     bool get_default_strategy() { return default_strategy; }
-    std::string getServer() { return server; }
+    std::string get_server() { return server; }
 
     void print() const override final {
         std::cout << "ClientArgs:\n";
@@ -281,7 +281,7 @@ namespace client {
  */
 std::string server() {
     assert(parsed);
-    return static_cast<ClientArgs*>(args.get())->getServer();
+    return static_cast<ClientArgs*>(args.get())->get_server();
 }
 
 /**
@@ -291,7 +291,7 @@ std::string server() {
  */
 std::string player_id() {
     assert(parsed);
-    return static_cast<ClientArgs*>(args.get())->getPlayerId();
+    return static_cast<ClientArgs*>(args.get())->get_player_id();
 }
 
 /**
@@ -301,7 +301,7 @@ std::string player_id() {
  */
 int family() {
     assert(parsed);
-    return static_cast<ClientArgs*>(args.get())->getFamily();
+    return static_cast<ClientArgs*>(args.get())->get_family();
 }
 
 /**

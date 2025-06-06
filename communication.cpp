@@ -312,8 +312,7 @@ public:
      */
     void approx_add(size_t point, double value) {
         assert(point <= 10000);
-        // TODO Uncomment line below.
-        // assert(value >= -5.0 && value <= 5.0);
+        assert(value >= -5.0 && value <= 5.0);
         client_approximations[point] += Rational(value);
     }
 
@@ -886,7 +885,7 @@ public:
         }
 
         // Baptise client with given ID.
-        conn.baptise(hello_msg.getPlayerID());
+        conn.baptise(hello_msg.get_player_id());
         tga::io::log::info::server::client_known(
             tga::net::get_ip(conn.get_addr()),
             tga::net::get_port(conn.get_addr()),
@@ -907,8 +906,8 @@ public:
         ClientConnection &conn = connections.at(idx);
         PutMessage put_msg = dynamic_cast<PutMessage &>(*msg);
 
-        const size_t point = put_msg.getPoint();
-        const double value = (double) put_msg.getValue();
+        const size_t point = put_msg.get_point();
+        const double value = (double) put_msg.get_value();
 
         // Check, if PUT message is sent in between
         // receiving earlier PUT and sending PUT response.
@@ -939,7 +938,7 @@ public:
             
             // Plan sending BAD_PUT Message.
             MsgPtr timeout_msg = std::make_unique<BadPutMessage>(
-                                        point, put_msg.getValue());
+                                        point, put_msg.get_value());
             conn.set_timeout_meaning(TimeoutMeaning::SEND_DELAY);
             conn.set_timeout_message(std::move(timeout_msg));
             conn.set_phase(CommunicationPhase::SENDING_PUT_RESPONSE);
@@ -1080,7 +1079,7 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
         // FIXME Ale ten warunek brzydkko wygląda
         if (msg == nullptr || rinfo.err != ReceivedDataStatus::SUCCESS ||
                 (conn.get_phase() == CommunicationPhase::PRE_GAME && 
-                msg->messageType() != "HELLO")) { // Invalid message.
+                msg->message_type() != "HELLO")) { // Invalid message.
             std::string message_text(buffer, len_received);
             auto addr = conn.get_addr();
             std::string player_id = "UNKNOWN";
@@ -1097,7 +1096,7 @@ void handle_received_data(const size_t idx, const size_t len_received, ReceiveIn
         }
 
         // Message is valid.
-        MsgHandlerPtr handler = make_handler(msg->messageType());
+        MsgHandlerPtr handler = make_handler(msg->message_type());
         handler->handle(msg, idx, rinfo);
 
         if (rinfo.err == ReceivedDataStatus::SUCCESS) {
@@ -1682,7 +1681,7 @@ public:
 
         // Store the received coefficients.
         CoeffMessage coeff_msg = dynamic_cast<CoeffMessage &>(*msg);
-        coefficients = coeff_msg.getCoefficients();
+        coefficients = coeff_msg.get_coefficients();
 
         if (tga::args::client::default_strategy()) {
             // TODO Napisać gdzieś tę default-ową strategię.
@@ -1889,7 +1888,7 @@ void handle_received_data(const ssize_t len_received, const size_t idx, ReceiveI
         }
 
         // Message is valid.
-        MsgHandlerPtr handler = make_handler(msg->messageType());
+        MsgHandlerPtr handler = make_handler(msg->message_type());
         handler->handle(msg, rinfo);
         // FIXME Chyba nigdszie nie używane jest rinfo.
 
@@ -1901,7 +1900,7 @@ void handle_received_data(const ssize_t len_received, const size_t idx, ReceiveI
         bufman.set_msg_start_idx(new_pos);
 
         // FIXME Brzydkie.
-        if (msg->messageType() == "SCORING") exit(0);
+        if (msg->message_type() == "SCORING") exit(0);
     }
 
     // Update the buffer position and message start index,
