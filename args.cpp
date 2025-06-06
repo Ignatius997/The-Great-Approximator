@@ -29,6 +29,11 @@ static bool parse_uint(const std::string& str, unsigned min, unsigned max, unsig
     }
 }
 
+/**
+ * @brief Base class for program arguments.
+ * @note This class is abstract and should not be instantiated directly.
+ *       Use derived classes like ServerArgs or ClientArgs instead.
+ */
 class ProgramArgs {
 protected:
     unsigned port = 0; // Stored in host byte order.
@@ -40,6 +45,11 @@ public:
     unsigned getPort() { return port; }
 };
 
+/**
+ * @brief Class for server arguments.
+ * @note This class handles the parsing and validation of command line arguments
+ *       specific to the server configuration.
+ */
 class ServerArgs : public ProgramArgs {
 protected:
     // unsigned port = 0;
@@ -83,7 +93,6 @@ public:
                 }
             } else if (arg == "-f" && i + 1 < argc) {
                 if (file_set) tga::io::log::err::error("Parameter -f specified multiple times");
-                // TODO To jest trochę frajerskie, nie musimy w sumie pamiętać file w args.
                 file = argv[++i];
                 tga::io::file::set_coeffs_file(file);
                 file_set = true;
@@ -112,6 +121,11 @@ public:
     }
 };
 
+/**
+ * @brief Class for client arguments.
+ * @note This class handles the parsing and validation of command line arguments
+ *       specific to the client configuration.
+ */
 class ClientArgs : public ProgramArgs {
 protected:
     std::string player_id;
@@ -238,7 +252,7 @@ void print() {
 namespace server {
 
 /**
- * @brief returns M value (explained in README).
+ * @brief returns M value - number of correct PUT messages, that server has to process.
  * @note MUST be called after `parse()`.
  * @return M value.
  */
@@ -249,7 +263,7 @@ size_t M() {
 }
 
 /**
- * @brief returns N value (explained in README).
+ * @brief returns N value - polynomial degree.
  * @note MUST be called after `parse()`.
  * @return N value.
  */
@@ -260,7 +274,7 @@ size_t N() {
 }
 
 /**
- * @brief returns K value (explained in README).
+ * @brief returns K value - number of function arguments to approximate by the client.
  * @note MUST be called after `parse()`.
  * @return K value.
  */
@@ -316,6 +330,11 @@ bool default_strategy() {
 
 } // namespace client
 
+/**
+ * @brief Returns server's or client's port number (depending on the working program).
+ * @note MUST be called after `parse()`.
+ * @return Port number in host byte order.
+ */
 unsigned port() {
     assert(parsed);
     return args->getPort();

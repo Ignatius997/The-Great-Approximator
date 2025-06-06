@@ -15,6 +15,11 @@ private:
      */
     std::string num;
 
+    /**
+     * @brief Removes trailing zeros from the number.
+     * If the number has a dot, it removes trailing zeros after the dot.
+     * If there are no digits after the dot, it removes the dot itself.
+     */
     static void remove_trailing_zeros(std::string &num) {
         auto dot_pos = num.find('.');
         if (dot_pos != std::string::npos) {
@@ -30,6 +35,10 @@ private:
         }
     }
 
+    /**
+     * @brief Ensures that the number has at most 7 digits after the dot.
+     * If there are more than 7 digits, it truncates the number to 7 digits after the dot.
+     */
     static void fit_length(std::string &num) {
         auto dot_pos = num.find('.');
         if (dot_pos != std::string::npos) {

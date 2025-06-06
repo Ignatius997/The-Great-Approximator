@@ -8,6 +8,9 @@
 namespace tga {
 namespace args {
 
+constexpr const size_t MAX_N = 8;
+constexpr const size_t MAX_K = 10000;
+
 void parse(int argc, char** argv);
 void print();
 

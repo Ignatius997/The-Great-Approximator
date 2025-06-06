@@ -2,6 +2,7 @@
 #define TGA_COMMUNICATION_H
 
 #include <variant>
+#include <optional>
 
 #include "netutils.h"
 #include "Message.h"
@@ -37,10 +38,8 @@ namespace client {
     void clear_revents();
     int  poll_events();
     void prepare_to_send(MsgPtr msg);
-    void handle_poll_event(const size_t idx);
-
-    // void send_message(MsgPtr msg);
-    // void receive_message();
+    std::optional<int> handle_poll_event_from_server();
+    void handle_poll_event_from_stdin();
 }
 
 void setup();

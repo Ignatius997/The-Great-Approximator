@@ -1,5 +1,9 @@
-#include <iostream>
-#include <unistd.h> // TODO Delete for sleep
+/**
+ * This is server's program for The Great Approximator game.
+ * 
+ * Author: Ignacy Pernach
+ * Date: 06.06.2025
+ */
 
 #include "io.h"
 #include "Rational.h"
@@ -8,8 +12,6 @@
 #include "communication.h"
 #include "netutils.h"
 
-
-using tga::net::ReceiveInfo;
 using tga::io::log::err::error;
 using tga::config::debug;
 
@@ -37,12 +39,9 @@ int main(int argc, char* argv[]) {
 
     setup();
 
-    // TODO Czy pętla ma być nieskończona?
     while (true) {
         clear_revents();
         
-        // TODO Maybe handle Ctrl-C like in echo-server-nonblocking.c
-
         int poll_status = poll_events();
         if (poll_status < 0) { // Fail.
             error("poll");

@@ -97,7 +97,6 @@ MsgPtr HelloMessage::deserialize(const std::string &msg_body,
     return std::make_unique<HelloMessage>(player_id);
 }
 
-// TODO Przetestować te regexy
 MsgPtr CoeffMessage::deserialize(const std::string& msg_body, ReceiveInfo& rinfo) {
     auto coeffs = extract_coeffs(msg_body, rinfo);
     return coeffs.has_value() ? std::make_unique<CoeffMessage>(std::move(*coeffs)) :

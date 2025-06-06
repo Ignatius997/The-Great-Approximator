@@ -141,6 +141,7 @@ std::string get_ip(const SockAddrVariant &addr) {
     }
 
     assert(false); // Should never reach here
+    return ""; // Just to satisfy the compiler, should never be reached.
 }
 
 /**
@@ -158,6 +159,7 @@ uint16_t get_port(const SockAddrVariant &addr) {
     }
 
     assert(false); // Should never reach here
+    return 0; // Just to satisfy the compiler, should never be reached.
 }
 
 } // namespace net

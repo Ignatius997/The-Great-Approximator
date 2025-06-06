@@ -58,10 +58,10 @@ enum ReceivedDataStatus {
     INVALID_VALUE   // Invalid value in the message data.
 };
 
-// FIXME Jeśli nie będzie tutaj innych wartości, to ReceiveInfo można zamienić na enum z wartościami ReceivedDataStatus.
 /**
  * @brief This class is used to store information about the
  * received message.
+ * @note It has only one field, but it is so for extensibility.
  */
 class ReceiveInfo {
 public:

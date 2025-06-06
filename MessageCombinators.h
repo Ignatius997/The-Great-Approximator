@@ -53,7 +53,6 @@ private:
 public:
     static constexpr const char *msg_type = "COEFF";
 
-    // TODO Było move
     CoeffMessage(std::vector<Rational> coeffs) : Message(), coeffs(coeffs) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
     std::string message_type() const override final { return msg_type; }
@@ -92,7 +91,6 @@ private:
 public:
     static constexpr const char *msg_type = "STATE";
 
-    // TODO Było std::move
     StateMessage(std::vector<Rational> approx) : approx(approx) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
     std::string message_type() const override final { return msg_type; }
@@ -124,7 +122,6 @@ private:
     const Rational value;
 
 public:
-    // TODO było std::move
     PVMessage(size_t p, Rational v) : point(p), value(v) {}
     static std::optional<std::pair<size_t, Rational>> deserialize_helper(
                                                     const std::string& msg_body,
@@ -189,7 +186,7 @@ public:
     ScoringMessage(std::vector<std::pair<std::string, Rational>> scores) : scores(scores) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
     std::string message_type() const override final { return msg_type; }
-    // NOTE Check, if the order of players is correct in the for loop. I think yes.
+
     std::string message_content() const override {
         std::string content;
 

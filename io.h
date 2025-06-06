@@ -47,7 +47,6 @@ namespace log {
             void coeff(const std::vector<std::string>& coeffs);
             void state(const std::vector<std::string>& coeffs);
             void scoring(const std::vector<std::string>& scores);
-            void server_disconnected();
         }
     }
 }

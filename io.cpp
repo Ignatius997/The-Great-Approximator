@@ -16,6 +16,9 @@ namespace log {
 
 namespace {
 
+/**
+ * @brief Convert an IP address to a more convenient format.
+ */
 std::string convenient_ip(const std::string &ip) {
     // If the IP is a loopback address, return "localhost".
     if (ip == "::1") return "localhost";
@@ -121,7 +124,7 @@ void sent(const std::string& message, const std::string& player_id) {
         } else if (type == "STATE") {
             std::cout << "Sending state " << rest << " to " << player_id << "." << std::endl;
         } else if (type == "SCORING") {
-            std::cout << "Game end, scoring: " << rest << "." << std::endl << std::endl;
+            std::cout << "Game end, scoring: " << rest << "." << std::endl;
         }
 
         if (crlf == std::string::npos) break;
@@ -242,10 +245,6 @@ void scoring(const std::vector<std::string>& scores) {
     std::cout << "." << std::endl;
 }
 
-void server_disconnected() {
-    std::cout << "Server disconnected, exiting." << std::endl;
-}
-
 /**
  * @brief Print a message when the client receives a message from the server.
  * @param message The message received from the server.
@@ -282,7 +281,6 @@ namespace {
  */
 void set_coeffs_file(const std::string& file) {
     coeffs_file = file;
-    tga::io::log::info::custom("Coefficients file set to: " + file);
 }
 
 /**
@@ -316,7 +314,7 @@ std::string read_coeffs() {
     assert(line_number <= current_line); // Should not occur.
     ++current_line; // Increment for the next read.
 
-    file.close(); // FIXME For sure?
+    file.close();
     return line;
 }
 

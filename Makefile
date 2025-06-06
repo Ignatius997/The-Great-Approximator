@@ -1,6 +1,5 @@
 CXX := g++
-CXXFLAGS := -Wall -Wextra -std=c++17 -O0 -g
-LDFLAGS :=
+CXXFLAGS := -Wall -Wextra -std=c++17 -O2 -DNDEBUG
 
 SRC_DIR := .
 OBJ_DIR := .
@@ -29,23 +28,19 @@ CLIENT_OBJ := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/client-%.o,$(CLIENT_SRC))
 
 all: $(SERVER_TGT) $(CLIENT_TGT)
 
-# Kompilacja plików serwera z -DSERVER
+# Compile server files z TGA_SERVER macro.
 $(OBJ_DIR)/server-%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -DTGA_SERVER -c $< -o $@
 
-# Kompilacja plików klienta z -DCLIENT
+# Compile client files with TGA_CLIENT macro.
 $(OBJ_DIR)/client-%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -DTGA_CLIENT -c $< -o $@
 
 $(SERVER_TGT): $(SERVER_OBJ)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
 
 $(CLIENT_TGT): $(CLIENT_OBJ)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean:
 	rm -f *.o $(SERVER_TGT) $(CLIENT_TGT)
-
-# TODO Delete this in release version
-cleano:
-	rm -f *.o
