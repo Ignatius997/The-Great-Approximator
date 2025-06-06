@@ -14,6 +14,16 @@ namespace io {
 
 namespace log {
 
+namespace {
+
+std::string convenient_ip(const std::string &ip) {
+    // If the IP is a loopback address, return "localhost".
+    if (ip == "::1") return "localhost";
+    return ip;
+}
+
+} // anonymous namespace
+
 namespace err {
 
 /**
@@ -41,7 +51,7 @@ void message(const std::string &message,
              const SockAddrVariant &addr) {
     auto ip = tga::net::get_ip(addr);
     auto port = tga::net::get_port(addr);
-    std::cerr << "ERROR: bad message from [" << ip << "]:" << port
+    std::cerr << "ERROR: bad message from [" << convenient_ip(ip) << "]:" << port
               << ", " << player << ": " << message << std::endl;
 }
 
@@ -70,20 +80,53 @@ void message(const std::string &message) {
 namespace info {
 
 /**
- * @brief Print game end message with scoring.
- * 
- * @param results Vector of pairs containing player ID and result.
+ * @brief Print a custom message to stdout.
+ * @param message The message to be printed.
  */
-void game_end(const std::vector<std::pair<std::string, std::string>>& results) {
-    std::cout << "Game end, scoring:";
-    for (const auto& [player_id, result] : results) {
-        std::cout << " " << player_id << " " << result;
-    }
-    std::cout << "." << std::endl;
-}
-
 void custom(const std::string &message) {
     std::cout << message << std::endl;
+}
+
+/**
+ * @brief Print a log when a message is sent to a player/server.
+ * 
+ * @param message The message sent.
+ * @param player_id The ID of the player who received the message.
+ *                  Redundant if function called by a client 
+ * @param addr The address of the recipient.
+ */
+void sent(const std::string& message, const std::string& player_id) {
+    size_t start = 0;
+    while (start < message.size()) {
+        size_t crlf = message.find("\r\n", start);
+        std::string line = (crlf != std::string::npos)
+            ? message.substr(start, crlf - start)
+            : message.substr(start);
+
+        // Extract message type (first word)
+        size_t space = line.find(' ');
+        std::string type = (space != std::string::npos) ? line.substr(0, space) : line;
+        std::string rest = (space != std::string::npos) ? line.substr(space + 1) : "";
+
+        // Handle different message types
+        if (type == "COEFF") {
+            std::cout << player_id << " get coefficients " << rest << "." << std::endl;
+        } else if (type == "PUT") {
+            size_t point_end = rest.find(' ');
+            if (point_end != std::string::npos) {
+                std::string point = rest.substr(0, point_end);
+                std::string value = rest.substr(point_end + 1);
+                std::cout << "Putting " << value << " in " << point << "." << std::endl;
+            }
+        } else if (type == "STATE") {
+            std::cout << "Sending state " << rest << " to " << player_id << "." << std::endl;
+        } else if (type == "SCORING") {
+            std::cout << "Game end, scoring: " << rest << "." << std::endl << std::endl;
+        }
+
+        if (crlf == std::string::npos) break;
+        start = crlf + 2; // Move past "\r\n"
+    }
 }
 
 namespace server {
@@ -95,7 +138,7 @@ namespace server {
  * @param port The port number of the client.
  */
 void new_client(const std::string& ip, uint16_t port) {
-    std::cout << "New client [" << ip << "]:" << port << "." << std::endl;
+    std::cout << "New client [" << convenient_ip(ip) << "]:" << port << "." << std::endl;
 }
 
 /**
@@ -105,8 +148,8 @@ void new_client(const std::string& ip, uint16_t port) {
  * @param port The port number of the client.
  * @param player_id The ID of the player.
  */
-void client_known(const std::string& ip, uint16_t port, const std::string& player_id) {
-    std::cout << "[" << ip << "]:" << port << " is now known as " << player_id << "." << std::endl;
+void hello(const std::string& ip, uint16_t port, const std::string& player_id) {
+    std::cout << "" << convenient_ip(ip) << ":" << port << " is now known as " << player_id << "." << std::endl;
 }
 
 /**
@@ -115,7 +158,7 @@ void client_known(const std::string& ip, uint16_t port, const std::string& playe
  * @param player_id The ID of the player requesting coefficients.
  * @param coeffs The coefficients being requested.
  */
-void get_coefficients(const std::string& player_id, const std::vector<std::string>& coeffs) {
+void coeff(const std::string& player_id, const std::vector<std::string>& coeffs) {
     std::cout << player_id << " get coefficients";
     for (const auto& coeff : coeffs) {
         std::cout << " " << coeff;
@@ -131,7 +174,7 @@ void get_coefficients(const std::string& player_id, const std::vector<std::strin
  * @param point The point where the value is being put.
  * @param state The current state of the game.
  */
-void put_value(const std::string& player_id, const std::string& value, int point, const std::vector<std::string>& state) {
+void put(const std::string& player_id, int point, const std::string& value, const std::vector<std::string>& state) {
     std::cout << player_id << " puts " << value << " in " << point << ", current state";
     for (const auto& s : state) {
         std::cout << " " << s;
@@ -140,91 +183,20 @@ void put_value(const std::string& player_id, const std::string& value, int point
 }
 
 /**
- * @brief Print a message when the state is sent to a player.
+ * @brief Print a message when a client disconnects.
  * 
- * @param state The state being sent.
- * @param player_id The ID of the player receiving the state.
+ * @param ip The IP address of the client.
+ * @param port The port number of the client.
+ * @param player_id The ID of the player who disconnected.
  */
-void send_state(const std::vector<std::string>& state, const std::string& player_id) {
-    std::cout << "Sending state";
-    for (const auto& s : state) {
-        std::cout << " " << s;
-    }
-    std::cout << " to " << player_id << "." << std::endl;
-}
-
 void client_disconnected(const std::string& ip, uint16_t port, const std::string& player_id) {
-    std::cout << "Client [" << ip << "]:" << port << " with player ID " << player_id
+    std::cout << "Player " << player_id << " (" << convenient_ip(ip) << ":" << port << ")" 
               << " disconnected." << std::endl;
 }
-
-/**
- * @brief Print a log when a message is received from a player.
- * 
- * @param message The message received.
- * @param player_id The ID of the player who sent the message.
- * @param addr The address of the sender.
- */
-void received(const std::string& message, const std::string& player_id, const SockAddrVariant& addr) {
-    size_t pos = message.find("\r\n");
-    std::string cut_msg = (pos != std::string::npos) ? message.substr(0, pos) : message;
-    
-    std::cout << "Received message " << cut_msg
-              <<" from player " << player_id
-              << " at address [" << tga::net::get_ip(addr) << "]:"
-              << tga::net::get_port(addr) << std::endl;
-}
-
-/**
- * @brief Print a log when a message is sent to a player.
- * 
- * @param message The message sent.
- * @param player_id The ID of the player who received the message.
- * @param addr The address of the recipient.
- */
-void sent(const std::string& message, const std::string& player_id, const SockAddrVariant& addr) {
-    size_t start = 0;
-    while (start < message.size()) {
-        size_t pos = message.find("\r\n", start);
-        if (pos == std::string::npos) { // Last message.
-            std::string cut_msg = message.substr(start);
-            if (!cut_msg.empty()) {
-                std::cout << "Sent message " << cut_msg
-                          << " to player " << player_id
-                          << " at address [" << tga::net::get_ip(addr) << "]:"
-                          << tga::net::get_port(addr) << std::endl;
-            }
-            break;
-        }
-
-        std::string cut_msg = message.substr(start, pos - start);
-        if (!cut_msg.empty()) {
-            std::cout << "Sent message " << cut_msg
-                      << " to player " << player_id
-                      << " at address [" << tga::net::get_ip(addr) << "]:"
-                      << tga::net::get_port(addr) << std::endl;
-        }
-        start = pos + 2; // Przesuń za \r\n
-    }
-}
-
-// TODO Delete
-// void sent(const std::string& message, const std::string& player_id, const SockAddrVariant& addr) {
-//     size_t pos = message.find("\r\n");
-//     std::string cut_msg = (pos != std::string::npos) ? message.substr(0, pos) : message;
-    
-//     std::cout << "Sent message " << cut_msg
-//               <<" to player " << player_id
-//               << " at address [" << tga::net::get_ip(addr) << "]:"
-//               << tga::net::get_port(addr) << std::endl;
-// }
 
 } // namespace server
 
 namespace client {
-
-// NOTE Needs testing.
-// FIXME Make it thread-safe
 
 /**
  * @brief Print a message when the client is connected to the server.
@@ -233,15 +205,15 @@ namespace client {
  * @param port The port number of the server (host byte order).
  */
 void connected_to(const std::string& ip, uint16_t port) {
-    std::cout << "Connected to [" << ip << "]:" << port << "." << std::endl;
+    std::cout << "Connected to [" << convenient_ip(ip) << "]:" << port << "." << std::endl;
 }
 
 /**
- * @brief Print a message when the client receives coefficients.
+ * @brief Print a message when the client receives COEFF message.
  * 
  * @param coeffs The coefficients received from the server.
  */
-void received_coefficients(const std::vector<std::string>& coeffs) {
+void coeff(const std::vector<std::string>& coeffs) {
     std::cout << "Received coefficients";
     for (const auto& coeff : coeffs) {
         std::cout << " " << coeff;
@@ -250,30 +222,28 @@ void received_coefficients(const std::vector<std::string>& coeffs) {
 }
 
 /**
- * @brief Print a message when the client puts a value in a point.
+ * @brief Print a message when the client receives the STATE message.
  * 
- * @param value The value being put.
- * @param point The point where the value is being put.
+ * @param state The STATE coefficients received from the server.
  */
-void putting_value(const std::string& value, int point) {
-    std::cout << "Putting " << value << " in " << point << "." << std::endl;
-}
-
-/**
- * @brief Print a message when the client receives the state.
- * 
- * @param state The state received from the server.
- */
-void received_state(const std::vector<std::string>& state) {
+void state(const std::vector<std::string>& coeffs) {
     std::cout << "Received state";
-    for (const auto& s : state) {
+    for (const auto& s : coeffs) {
         std::cout << " " << s;
     }
     std::cout << "." << std::endl;
 }
 
+void scoring(const std::vector<std::string>& scores) {
+    std::cout << "Game end, scoring: ";
+    for (const auto& score : scores) {
+        std::cout << " " << score;
+    }
+    std::cout << "." << std::endl;
+}
+
 void server_disconnected() {
-    std::cout << "Server disconnected." << std::endl;
+    std::cout << "Server disconnected, exiting." << std::endl;
 }
 
 /**
@@ -350,7 +320,7 @@ std::string read_coeffs() {
     return line;
 }
 
-}
+} // namespace file
 
 } // namespace io
 } // namespace tga

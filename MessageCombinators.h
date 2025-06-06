@@ -53,7 +53,8 @@ private:
 public:
     static constexpr const char *msg_type = "COEFF";
 
-    CoeffMessage(std::vector<Rational> coeffs) : Message(), coeffs(std::move(coeffs)) {}
+    // TODO Było move
+    CoeffMessage(std::vector<Rational> coeffs) : Message(), coeffs(coeffs) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
     std::string message_type() const override final { return msg_type; }
     std::string message_content() const override {
@@ -74,7 +75,7 @@ public:
      * @return A vector of Rational numbers representing the coefficients.
      */
     std::vector<Rational> get_coefficients() const {
-        return coeffs; // TODO Chyba można nawet zrobić move.
+        return coeffs;
     }
 };
 
@@ -86,14 +87,13 @@ public:
  */
 class StateMessage : public Message {
 private:
-    // TODO Is this correct? What if we change this approx?
-    // NOTE Change K to the actual size of the approximation
     std::vector<Rational> approx; // Approximation of the function. approx.size() == K.
 
 public:
     static constexpr const char *msg_type = "STATE";
 
-    StateMessage(std::vector<Rational> approx) : approx(std::move(approx)) {}
+    // TODO Było std::move
+    StateMessage(std::vector<Rational> approx) : approx(approx) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
     std::string message_type() const override final { return msg_type; }
     std::string message_content() const override {
@@ -109,6 +109,10 @@ public:
         
         return content;
     }
+
+    std::vector<Rational> get_approximations() const {
+        return approx;
+    }
 };
 
 /**
@@ -120,7 +124,8 @@ private:
     const Rational value;
 
 public:
-    PVMessage(size_t p, Rational v) : point(p), value(std::move(v)) {}
+    // TODO było std::move
+    PVMessage(size_t p, Rational v) : point(p), value(v) {}
     static std::optional<std::pair<size_t, Rational>> deserialize_helper(
                                                     const std::string& msg_body,
                                                     ReceiveInfo& rinfo);
@@ -211,7 +216,7 @@ public:
      * @return A map of player IDs to their scores.
      */
     std::vector<std::pair<std::string, Rational>> get_scores() const {
-        return scores; // TODO Chyba można nawet zrobić move.
+        return scores;
     }
 };
 

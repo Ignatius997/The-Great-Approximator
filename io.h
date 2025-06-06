@@ -32,33 +32,22 @@ namespace log {
     }
 
     namespace info {
-        void game_end(const std::vector<std::pair<std::string, std::string>>& results);
         void custom(const std::string &message);
+        void sent(const std::string &message, const std::string &player_id);
 
         namespace server {
             void new_client(const std::string& ip, uint16_t port);
-            void client_known(const std::string& ip, uint16_t port, const std::string& player_id);
-            void get_coefficients(const std::string& player_id, const std::vector<std::string>& coeffs);
-            void put_value(const std::string& player_id, const std::string& value, int point, const std::vector<std::string>& state);
-            void send_state(const std::vector<std::string>& state, const std::string& player_id);
+            void hello(const std::string& ip, uint16_t port, const std::string& player_id);
+            void put(const std::string& player_id, int point, const std::string& value, const std::vector<std::string>& state);
             void client_disconnected(const std::string& ip, uint16_t port, const std::string& player_id);
-            
-            // NOTE One są do debugowania, bo nie chce mi się na razie zajmowac wyspecyfikowanymi wiadomościami
-            void received(const std::string &message, const std::string &player_id, const SockAddrVariant &addr);
-            void sent(const std::string &message, const std::string &player_id, const SockAddrVariant &addr);
         }
 
         namespace client {
             void connected_to(const std::string& ip, uint16_t port);
-            void received_coefficients(const std::vector<std::string>& coeffs);
-            void putting_value(const std::string& value, int point);
-            void received_state(const std::vector<std::string>& state);
-            
+            void coeff(const std::vector<std::string>& coeffs);
+            void state(const std::vector<std::string>& coeffs);
+            void scoring(const std::vector<std::string>& scores);
             void server_disconnected();
-
-            // NOTE One są do debugowania, bo nie chce mi się na razie zajmowac wyspecyfikowanymi wiadomościami
-            void received(const std::string &message);
-            void sent(const std::string &message);
         }
     }
 }
