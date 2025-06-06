@@ -4,7 +4,14 @@ np. read-a lub innej funkcji systemowej nadejdzie sygnał, lub nastąpi inna
 sytuacja, która spowoduje przerwanie funkcji systemowej, nastąpi POLLERR
 i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a.
 
+Strategia POLLIN-ów i POLLOUT-ów: ustawiaj ekskluzywne POLLOUT tylko wtedy, gdy to konieczne
+Serwer po wykonaniu M dodawań ignoruje wiadomości od klientów.
+
 ERROR
+Klient z wczytywaniem z pliku
+Polaczenia powinny być two-way: na pollin i pollout.
+Ustawianie odpowiedniej fazy
+
 TODO Zrobić pollfd na conn klienta podczas PUTa na POLLIN & POLLOUT, żeby można było przyjmować i wysyłać wiadomości.
 klient bez -a
 scoring przed bad put / state

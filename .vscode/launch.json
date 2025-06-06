@@ -19,6 +19,7 @@
         }
     ],
     "configurations": [
+        
         {
             "name": "Debug TGA Server",
             "type": "cppdbg",

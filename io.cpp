@@ -183,14 +183,41 @@ void received(const std::string& message, const std::string& player_id, const So
  * @param addr The address of the recipient.
  */
 void sent(const std::string& message, const std::string& player_id, const SockAddrVariant& addr) {
-    size_t pos = message.find("\r\n");
-    std::string cut_msg = (pos != std::string::npos) ? message.substr(0, pos) : message;
-    
-    std::cout << "Sent message " << cut_msg
-              <<" to player " << player_id
-              << " at address [" << tga::net::get_ip(addr) << "]:"
-              << tga::net::get_port(addr) << std::endl;
+    size_t start = 0;
+    while (start < message.size()) {
+        size_t pos = message.find("\r\n", start);
+        if (pos == std::string::npos) { // Last message.
+            std::string cut_msg = message.substr(start);
+            if (!cut_msg.empty()) {
+                std::cout << "Sent message " << cut_msg
+                          << " to player " << player_id
+                          << " at address [" << tga::net::get_ip(addr) << "]:"
+                          << tga::net::get_port(addr) << std::endl;
+            }
+            break;
+        }
+
+        std::string cut_msg = message.substr(start, pos - start);
+        if (!cut_msg.empty()) {
+            std::cout << "Sent message " << cut_msg
+                      << " to player " << player_id
+                      << " at address [" << tga::net::get_ip(addr) << "]:"
+                      << tga::net::get_port(addr) << std::endl;
+        }
+        start = pos + 2; // Przesuń za \r\n
+    }
 }
+
+// TODO Delete
+// void sent(const std::string& message, const std::string& player_id, const SockAddrVariant& addr) {
+//     size_t pos = message.find("\r\n");
+//     std::string cut_msg = (pos != std::string::npos) ? message.substr(0, pos) : message;
+    
+//     std::cout << "Sent message " << cut_msg
+//               <<" to player " << player_id
+//               << " at address [" << tga::net::get_ip(addr) << "]:"
+//               << tga::net::get_port(addr) << std::endl;
+// }
 
 } // namespace server
 

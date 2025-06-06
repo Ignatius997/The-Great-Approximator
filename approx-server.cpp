@@ -52,9 +52,9 @@ int main(int argc, char* argv[]) {
             handle_timeouts();
 
             // NOTE: Explanation, why sending scores is here in documentation.
-            if (should_send_scores()) {
-                send_scores();
-            }
+            // if (should_send_scores()) {
+            //     send_scores();
+            // }
         } else { // success
             update_timeouts();
             handle_timeouts();

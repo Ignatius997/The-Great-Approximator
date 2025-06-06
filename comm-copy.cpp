@@ -194,9 +194,7 @@ protected:
     std::optional<TimeoutMeaning> timeout_meaning = TimeoutMeaning::NO_MESSAGE_RECEIVED; 
     std::optional<MsgPtr> timeout_message = std::nullopt; // Message to send after the timeout, if it occurred.
 
-    bool baptised = false; // Auxiliary flag to check if the client was baptised, i.e., has a name.
     CommunicationPhase phase = CommunicationPhase::PRE_GAME;
-    timeval state_delay_tv = { .tv_sec = 0, .tv_usec = 0 }; // Delay for the state message, set after the client is baptised.
 
     // FIXME Magiczna stała
     Rational coeffs[9] = {Rational("0")}; // Coefficients of the polynomial
@@ -266,29 +264,13 @@ public:
      * @brief Give name to the already connected, but unnamed client.
      */
     void baptise(const std::string &name) {
-        assert(!baptised && phase == CommunicationPhase::PRE_GAME);
+        assert(phase == CommunicationPhase::PRE_GAME);
         client_id = name;
-
-        // Set time structure for delaying STATE message.
-        time_t lowercase_count = std::count_if(
-            client_id.begin(), client_id.end(),
-            [](unsigned char c) { return std::islower(c); }
-        );
-        state_delay_tv = {
-            .tv_sec = lowercase_count,
-            .tv_usec = 0
-        };
-
-        baptised = true;
-    }
-
-    [[nodiscard]]
-    bool is_baptised() {
-        return baptised;
+        phase = CommunicationPhase::WAITING_FOR_PUT;
     }
 
     std::vector<Rational> get_coeffs() const {
-        assert(phase == CommunicationPhase::PRE_GAME);
+        assert(phase != CommunicationPhase::PRE_GAME);
         return std::vector<Rational>(coeffs, coeffs + tga::args::server::N() + 1);
     }
 
@@ -364,13 +346,22 @@ public:
     }
 
     std::vector<Rational> get_client_approximations() const {
-        auto end = client_approximations + tga::args::server::K() + 1;
+        auto end = client_approximations + tga::args::server::K();
         return std::vector<Rational>(client_approximations, end);
     }
 
     timeval get_state_delay() const {
-        assert(baptised);
-        return state_delay_tv;
+        assert(phase != CommunicationPhase::PRE_GAME);
+
+        static time_t lowercase_count = std::count_if(
+            client_id.begin(), client_id.end(),
+            [](unsigned char c) { return std::islower(c); }
+        );
+        static timeval tv = {
+            .tv_sec = lowercase_count,
+            .tv_usec = 0
+        };
+        return tv;
     }
 
     /**
@@ -417,18 +408,6 @@ public:
 
     size_t get_messages_received() const { return messages_received; }
     void increment_messages_to_receive() { messages_received++; }
-
-    /**
-     * @brief Update game phase based on the type of just sent message.
-     * @param msg_type The type of sent message.
-     */
-    void update_phase(const std::string & msg_type) {
-        if (msg_type == "COEFF") {
-            set_phase(CommunicationPhase::WAITING_FOR_PUT);
-        } else if (msg_type == "STATE" || msg_type == "BAD_PUT") {
-            set_phase(CommunicationPhase::WAITING_FOR_PUT);
-        }
-    }
 };
 
 /**
@@ -545,20 +524,18 @@ public:
     // FIXME Czy to jest bezpieczne?
     /**
      * @brief Removes the first element with the given index from the queue.
+     * 
      * This function should be called only when HELLO message was received to delete it from the queue.
+     * 
      * @param idx The index to remove.
-     * @return `true` if the index was found and removed, `false` if the index was not found.
      */
-    bool remove_by_idx(size_t idx) {
+    void remove_by_idx(size_t idx) {
         auto it = std::find_if(data.begin(), data.end(),
             [idx](const Pair& p) { return p.first == idx; });
         if (it != data.end()) {
             data.erase(it);
             std::make_heap(data.begin(), data.end(), cmp);
-            return true;
         }
-        
-        return false;
     }
 
     /**
@@ -681,9 +658,6 @@ void close_client_connection(const int idx) {
         messages_to_receive() += it->second.get_messages_received();
         connections.erase(it);
     }
-
-    // Remove the client's timeouts.
-    while (timeouts.remove_by_idx(idx)) {}
     
     close(poll_descriptors.at(idx).fd);
     
@@ -793,7 +767,7 @@ void prepare_to_send(const size_t idx, MsgPtr msg) {
     const std::string serialized_msg = msg->serialize();
     const size_t msg_len = serialized_msg.size();
 
-    assert(conn.is_baptised());
+    assert(conn.get_phase() != CommunicationPhase::PRE_GAME);
     assert(msg_len < buffer_size);
 
     // Switch to writing.
@@ -876,8 +850,8 @@ public:
         ClientConnection &conn = connections.at(idx);
         HelloMessage hello_msg = dynamic_cast<HelloMessage &>(*msg);
 
-        if (conn.is_baptised()) {
-            // Client is already baptised, but it sent HELLO message.
+        if (conn.get_phase() != CommunicationPhase::PRE_GAME) {
+            // Client is already baptised, but sent HELLO message.
             tga::io::log::err::server::message(hello_msg.serialize(),
                                     conn.get_client_id(),
                                     conn.get_addr());
@@ -919,7 +893,7 @@ public:
                 conn.get_addr());
             rinfo.err = ReceivedDataStatus::INVALID_TYPE;
             
-            if (conn.get_phase() != CommunicationPhase::WAITING_FOR_PUT) {
+            if (conn.get_phase() == CommunicationPhase::SENDING_PUT_RESPONSE) {
                 // Prepare for sending PENALTY and impose a penalty.
                 auto penalty_msg = std::make_unique<PenaltyMessage>(point, value);
                 prepare_to_send(idx, std::move(penalty_msg));      
@@ -942,11 +916,12 @@ public:
                                         point, put_msg.getValue());
             conn.set_timeout_meaning(TimeoutMeaning::SEND_DELAY);
             conn.set_timeout_message(std::move(timeout_msg));
-            conn.set_phase(CommunicationPhase::SENDING_PUT_RESPONSE);
-            conn.impose_penalty(10); // FIXME Magiczna stała.
-
             timeouts.emplace(idx, bad_put_delay);
+            conn.impose_penalty(10); // FIXME Magiczna stała.
         } else { // Correct PUT message.
+            // Check, if client is in the correct phase.
+            if (conn.get_phase() != CommunicationPhase::WAITING_FOR_PUT) return;
+
             conn.approx_add(point, value);
             // TODO Napisać taki log
             // tga::io::log::info::server::put(
@@ -961,12 +936,8 @@ public:
                                     std::move(v));
             conn.set_timeout_meaning(TimeoutMeaning::SEND_DELAY);
             conn.set_timeout_message(std::move(timeout_msg));
-            conn.set_phase(CommunicationPhase::SENDING_PUT_RESPONSE);
-
             timeouts.emplace(idx, conn.get_state_delay());
-
-            // NOTE BEZ TEGO NIE DZIAŁA TIMEOUT?
-            // poll_descriptors.at(idx).events = 0; // Reset events to avoid unwanted ones.
+            poll_descriptors.at(idx).events = 0; // Reset events to avoid unwanted ones.
 
             assert(messages_to_receive() > 0);
             --messages_to_receive();
@@ -1322,57 +1293,6 @@ bool new_ipv6_clients() {
 }
 
 /**
- * @brief Finds the message type (first word) of the message that ends at buffer_pos in the buffer.
- * 
- * Searches for the last "\r\n" before buffer_pos, then finds the first word after that (or from the buffer start).
- * Returns std::nullopt if no "\r\n" is found before buffer_pos.
- * 
- * @param bufman The BufferManager containing the buffer and buffer_pos.
- * @return std::optional<std::string> The message type, or std::nullopt if not found.
- * 
- * @note `bufman` parameter is not a const reference, because it is used to access it's buffer.
- */
-std::optional<std::string> last_sent_message_type(BufferManager& bufman) {
-    const char* buffer = bufman.get_buffer();
-    size_t buffer_pos = bufman.get_buffer_pos();
-
-    if (buffer_pos == 0) return std::nullopt;
-
-    // Find the last "\r\n" before `buffer_pos`.
-    ssize_t last_crlf = -1;
-    for (ssize_t i = buffer_pos - 2; i >= 0; --i) {
-        if (buffer[i] == '\r' && buffer[i + 1] == '\n') {
-            last_crlf = i;
-            break;
-        }
-    }
-
-    if (last_crlf == -1) { // No "\r\n" found.
-        return std::nullopt;
-    }
-
-    ssize_t msg_start = 0; // Beginning of the buffer in default.
-    for (ssize_t i = last_crlf - 1; i >= 0; --i) {
-        if (buffer[i] == '\r' && buffer[i + 1] == '\n') {
-            msg_start = i + 2; // Start after "\r\n"
-            break;
-        }
-    }
-
-    // Find end of the first word
-    ssize_t msg_end = msg_start;
-    while (msg_end < last_crlf && buffer[msg_end] != ' ' && buffer[msg_end] != '\r') {
-        ++msg_end;
-    }
-
-    if (msg_end > msg_start) {
-        return std::string(buffer + msg_start, msg_end - msg_start);
-    } else {
-        return std::nullopt;
-    }
-}
-
-/**
  * @brief Handles a poll event for a known client.
  * 
  * This function processes the poll event for a known client,
@@ -1388,6 +1308,16 @@ void handle_poll_event(const size_t idx) {
     pollfd &poll_fd = poll_descriptors.at(idx);
     ClientConnection &conn = connections.at(idx);
     BufferManager &bufman = conn.buffer_manager;
+
+    // FIXME Delete below
+    // Print revents
+    tga::io::log::info::custom(
+        "revents for client " + std::to_string(idx) + ": " +
+        std::to_string(poll_fd.revents));
+
+    if (poll_fd.revents & POLLERR) {
+        tga::io::log::info::custom("POLLERR, errno = " + std::to_string(errno));
+    }
 
     // TODO To w końcu z POLLERR czy bez?
     if ((poll_fd.revents & (POLLIN | POLLERR)) != 0) {
@@ -1407,7 +1337,6 @@ void handle_poll_event(const size_t idx) {
                 // 3 linijki na get_ip, get_port, get_client_id
             rinfo.err = ReceivedDataStatus::DISCONNECTED;
             close_client_connection(idx);
-            return; // No more data to handle.
         } else handle_received_data(idx, (size_t) len_received, rinfo);
     }
 
@@ -1425,10 +1354,8 @@ void handle_poll_event(const size_t idx) {
             if (errno != EINTR) { // Unless interrupted by a signal.
                 close_client_connection(idx);
             }
-        } else if (sent_bytes > 0) { // TODO Potrzebny ten arun?
+        } else {
             bufman.set_buffer_pos(buffer_pos + sent_bytes);
-            auto last_msg_type = last_sent_message_type(bufman);
-            if (last_msg_type.has_value()) conn.update_phase(*last_msg_type);
 
             if (bufman.get_buffer_pos() == buffer_len) { // All data sent.
                 tga::io::log::info::server::sent(
@@ -1441,9 +1368,16 @@ void handle_poll_event(const size_t idx) {
                     
                     if (connections.size() == 0) { // All clients disconnected.
                         // TODO Write some log about end of game.
-                        // tga::io::log::info::server::game_over();
-                        // Prepare for a next game.
+                        // tga::io::log::info::server::all_clients_disconnected();
+                        /** TODO
+                         * W treści zadania jest napisane, że serwer
+                         * "odczekuje 1 sekundę i rozpoczyna pracę od początku",
+                         * jednak czy oznacza to, że ma spać?
+                         */
+
+                        // TODO Reset ALL the data (except program args)
                         reset_all_data();
+
                         sleep(1);
                     }
 
@@ -1455,8 +1389,9 @@ void handle_poll_event(const size_t idx) {
 
                     if (messages_to_receive() > 0) {
                         poll_fd.events = POLLIN; // Switch to reading.
-                    } else if (timeouts.empty()) {
-                        send_scores();
+                        conn.set_phase(CommunicationPhase::WAITING_FOR_PUT);
+                    } else {
+                        poll_fd.events = 0; // No more events to handle.
                     }
                 }
             }
@@ -1473,7 +1408,7 @@ int poll_events() {
         const auto &tv = timeouts.top().second;
         timeout = tv.tv_sec * 1000 + tv.tv_usec / 1000; // Convert to miliseconds.
     }
-
+    (void) connections; // TODO Delete
     return poll(poll_descriptors.data(),
             (nfds_t) poll_descriptors.size(),
             timeout);
@@ -1739,43 +1674,6 @@ MsgHandlerPtr make_handler(const std::string &msg_type) {
     }
 }
 
-void process_pairs(std::string &full_data, size_t &data_left, ReceiveInfo &rinfo) {
-    // Process pairs of lines from stdin.
-    size_t first_lf_idx = full_data.find('\n');
-    while (first_lf_idx != std::string::npos && data_left > 0) {
-        std::string pair = full_data.substr(0, first_lf_idx);
-        full_data.erase(0, first_lf_idx + 1); // +1 for '\n'
-        data_left -= first_lf_idx + 1;
-
-        // Split the pair into point and value.
-        size_t space_idx = pair.find(' ');
-        if (space_idx == std::string::npos) {
-            rinfo.err = ReceivedDataStatus::INVALID_TYPE;
-            tga::io::log::err::server::input(pair);
-            first_lf_idx = full_data.find('\n');
-            continue;
-        }
-
-        // TODO To nie jest odporne na błędy
-        size_t point = std::stoul(pair.substr(0, space_idx));
-        double value = std::stod(pair.substr(space_idx + 1));
-
-        // TODO Czy to należy sprawdzać?
-        if (value < -5.0 || value > 5.0) {
-            rinfo.err = ReceivedDataStatus::INVALID_VALUE;
-            tga::io::log::err::server::input(pair);
-            first_lf_idx = full_data.find('\n');
-            continue;
-        }
-
-        MsgPtr put_msg = std::make_unique<PutMessage>(point, Rational(value));
-        prepare_to_send(std::move(put_msg));
-
-        // Aktualizuj indeks na końcu każdej iteracji
-        first_lf_idx = full_data.find('\n');
-    }
-}
-
 void handle_received_data(const ssize_t len_received, const size_t idx, ReceiveInfo &rinfo) {
     assert(len_received > 0);
 
@@ -1783,17 +1681,16 @@ void handle_received_data(const ssize_t len_received, const size_t idx, ReceiveI
     char *buffer = bufman.get_buffer();
     size_t data_left = len_received; // Remaining data to process.
 
+    // TODO Delete it
+    if (data_left > 50) {
+        tga::io::log::info::custom("THIS IS PROLLY IT!");
+    }
+
     while (data_left) {
         const size_t msg_start_idx = bufman.get_msg_start_idx();
 
         std::string full_data(buffer + bufman.get_buffer_pos(),
                             static_cast<size_t>(data_left));
-
-        if (idx == 1) { // Reading from stdin.
-            process_pairs(full_data, data_left, rinfo);
-            return; // TODO Ok?
-        }
-
         const size_t first_crlf_idx = full_data.find("\r\n");
         data_left = data_left - first_crlf_idx - 2; // -2 for '\r\n' itself.
 
@@ -1900,20 +1797,71 @@ void setup() {
 
     poll_descriptors.push_back( (pollfd) {
         .fd = socket_fd,
-        .events = POLLIN,
+        .events = POLLOUT, // We want to read and write.
         .revents = 0,
     });
 
 
-    if (!tga::args::client::default_strategy()) {
+    if (tga::args::client::default_strategy()) {
         // Add another poll descriptor for reading for stdin.
         poll_descriptors.push_back( (pollfd) {
             .fd = STDIN_FILENO,
-            .events = 1,
+            .events = POLLIN,
             .revents = 0,
         });
     }
 }
+
+/**
+ * @brief Receives a message from the server.
+ * 
+ * This function reads a message from the server and returns it as a
+ * ReceiveInfo object.
+ * 
+ * @return The received message as a ReceiveInfo object.
+ */
+// void receive_message() {  
+//     ReceiveInfo rinfo;
+
+//     ssize_t len_received = read(socket_fd, buffer, buffer_size);
+//     if (len_received < 0) {
+//         tga::io::log::err::error("read");
+//         close_connection();
+//     } else if (len_received == 0) { // EOF, server disconnected
+//         rinfo.err = ReceivedDataStatus::DISCONNECTED;
+//         close_connection();
+//     } else handle_received_data(len_received, rinfo);
+
+//     // TODO I co, i tyle? Chyba trzeba sprawdzić rinfo.
+// }
+    
+// NOTE Tutaj jest czysty MsgPtr, ale może warto by tu uwzględnić inne rzeczy, jeśli trzeba ofc
+// void send_message(MsgPtr msg) {
+//     std::string serialized_message = msg->serialize();
+
+//     size_t to_send = serialized_message.size();
+    
+//     while (to_send > 0) {
+//         ssize_t len_sent = write(socket_fd, serialized_message.c_str(), serialized_message.size());
+
+//         if (len_sent < 0) {
+//             if (errno == EAGAIN || errno == EWOULDBLOCK) {
+//                 len_sent = 0; // Not able to write right now, try later.
+//             }
+//             else {
+//                 tga::io::log::err::error("write");
+//                 close_connection();
+//                 exit(1); // FIXME Is this safe? Should we maybe `return`?
+//             }
+//         }
+//         else {
+//             to_send -= (size_t)len_sent;
+//             // TODO Czy powinniśmy coś odczekać, żeby nie zapchać tego gniazda.
+//         }
+//     }
+
+//     tga::io::log::info::client::sent(serialized_message);
+// }
 
 /**
  * @brief Clears the revents field of the poll descriptors.
@@ -1944,7 +1892,7 @@ void prepare_to_send(MsgPtr msg) {
 
     assert(msg_len < buffer_size);
 
-    // Switch to writing writing.
+    // Switch to writing.
     poll_descriptors.at(0).events = POLLOUT;
 
     // Prepare buffer
@@ -1956,7 +1904,7 @@ void prepare_to_send(MsgPtr msg) {
 
 
 /**
- * @brief Polls in-out events from the server.
+ * @brief Polls in-out events from the clients.
  */
 int poll_events() {
     return poll(poll_descriptors.data(), (nfds_t) poll_descriptors.size(), -1);
@@ -1973,20 +1921,15 @@ void handle_poll_event(const size_t idx) {
     if ((poll_fd.revents & (POLLIN | POLLERR)) != 0) {
         ssize_t len_received = read(poll_fd.fd, buffer + buffer_pos, buffer_size - buffer_pos);
         if (len_received < 0) {
-            tga::io::log::err::error("read");
+            tga::io::log::err::error("read from existing connection");
             close_connection(idx);
         } else if (len_received == 0) { // EOF, server disconnected.
             tga::io::log::info::client::server_disconnected(); // TODO trza rozrozniac ok disc i notok disck
             rinfo.err = ReceivedDataStatus::DISCONNECTED;
-            // FIXME Kod brzydki jak cholera, trzeba to rozdzielic na obsluga serwera i stdin
-            if (idx == 0) close_connection(idx);
+            close_connection(idx);
             exit(1); // FIXME BRZYDKIE
         } else handle_received_data(len_received, idx, rinfo);
     }
-
-    // TODO Czy nasz program jest bezpieczny na sytuację POLLIN & POLLOUT? NIE
-    buffer_pos = bufman.get_buffer_pos();
-    buffer_len = bufman.get_buffer_len();
 
     if ((poll_fd.revents & POLLOUT) != 0) {
         BufferManager &bufman = buffer_managers[idx];
@@ -1998,7 +1941,7 @@ void handle_poll_event(const size_t idx) {
         if (sent_bytes < 0) {
             tga::io::log::err::error("write");
             close_connection(idx);
-        } else if (sent_bytes > 0) {
+        } else {
             bufman.set_buffer_pos(buffer_pos + sent_bytes);
 
             if (bufman.get_buffer_pos() == buffer_len) { // All data sent.
@@ -2009,8 +1952,12 @@ void handle_poll_event(const size_t idx) {
 
                 tga::io::log::info::client::sent(std::string(buffer, buffer_len));
                 
-                poll_fd.events = POLLIN; // Switch to reading - wait for response.
-                pre_game = false; // FIXME Do czegoś to potrzebne?
+                if (tga::args::client::default_strategy() || pre_game) {
+                    poll_fd.events = POLLIN; // Switch to reading - wait for response.
+                    pre_game = false;
+                } else {
+                    // TODO Coś w głupiej strategii i nie HELLO?
+                }
 
             // TODO CO ROBIC w bloku poniżej?
             } else {
