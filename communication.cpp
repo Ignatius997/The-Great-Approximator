@@ -1397,12 +1397,12 @@ void handle_poll_event(const size_t idx) {
         ssize_t len_received = read(poll_fd.fd, buffer + pos, buffer_size - pos);
         if (len_received < 0) {
             // TODO Delete below? Czyżby
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNRESET) {
-                // No data to read, continue polling.
-                return;
-            } else {
-                tga::io::log::err::error("Errno: " + std::to_string(errno));
-            }
+            // if (errno == EAGAIN || errno == EWOULDBLOCK /*|| errno == ECONNRESET*/) {
+            //     // No data to read, continue polling.
+            //     return;
+            // } else {
+            //     tga::io::log::err::error("Errno: " + std::to_string(errno));
+            // }
 
             tga::io::log::err::error("read from existing connection");
             close_client_connection(idx);
@@ -1430,6 +1430,7 @@ void handle_poll_event(const size_t idx) {
 
         if (sent_bytes < 0) {
             tga::io::log::err::error("write");
+            // TODO Czy to ma sens? p[atrz nizej]
             if (errno != EINTR) { // Unless interrupted by a signal.
                 close_client_connection(idx);
             }
@@ -1493,23 +1494,41 @@ int poll_events() {
  * @brief Sends SCORING messages to clients.
  */
 void send_scores() {
-    std::map<std::string, Rational> scores_map;
+    // std::map<std::string, Rational> scores_map;
+    std::vector<std::pair<std::string, Rational>> scores;
 
     for (size_t idx = 0; idx < poll_descriptors.size(); ++idx) {
         if (connections.find(idx) != connections.end()) {
             ClientConnection &conn = connections.at(idx);
             conn.set_phase(CommunicationPhase::END);
             Rational score = conn.calculate_score();
-            scores_map.insert({conn.get_client_id(), score});
+            scores.emplace_back(conn.get_client_id(), score);
         }
     }
 
     for (size_t idx = 0; idx < poll_descriptors.size(); ++idx) {
         if (connections.find(idx) != connections.end()) {
-            MsgPtr msg = std::make_unique<ScoringMessage>(scores_map);
+            MsgPtr msg = std::make_unique<ScoringMessage>(scores);
             prepare_to_send(idx, std::move(msg));
         }
     }
+
+
+    // for (size_t idx = 0; idx < poll_descriptors.size(); ++idx) {
+    //     if (connections.find(idx) != connections.end()) {
+    //         ClientConnection &conn = connections.at(idx);
+    //         conn.set_phase(CommunicationPhase::END);
+    //         Rational score = conn.calculate_score();
+    //         scores_map.insert({conn.get_client_id(), score});
+    //     }
+    // }
+
+    // for (size_t idx = 0; idx < poll_descriptors.size(); ++idx) {
+    //     if (connections.find(idx) != connections.end()) {
+    //         MsgPtr msg = std::make_unique<ScoringMessage>(scores_map);
+    //         prepare_to_send(idx, std::move(msg));
+    //     }
+    // }
 }
 
 bool should_send_scores() {
@@ -1715,18 +1734,19 @@ public:
         (void) msg; // Unused parameter
         (void) rinfo; // Unused parameter
         
-        if (tga::config::debug) {
-            // Check my score.
-            ScoringMessage scoring_msg = dynamic_cast<ScoringMessage &>(*msg);
-            const auto &scores = scoring_msg.getScores();
-            auto it = scores.find(tga::args::client::player_id());
-            if (it != scores.end()) {
-                std::string score_str = (std::string) it->second;
-                tga::io::log::info::custom("Your score: " + score_str);
-            } else {
-                tga::io::log::err::error("Your score is not available.");
-            }
-        }
+        // TODO Delete below
+        // if (tga::config::debug) {
+        //     // Check my score.
+        //     ScoringMessage scoring_msg = dynamic_cast<ScoringMessage &>(*msg);
+        //     const auto &scores = scoring_msg.get_scores();
+        //     auto it = scores.find(tga::args::client::player_id());
+        //     if (it != scores.end()) {
+        //         std::string score_str = (std::string) it->second;
+        //         tga::io::log::info::custom("Your score: " + score_str);
+        //     } else {
+        //         tga::io::log::err::error("Your score is not available.");
+        //     }
+        // }
     }
 };
 
@@ -1766,9 +1786,20 @@ void process_pairs(std::string &full_data, size_t &data_left, ReceiveInfo &rinfo
             continue;
         }
 
-        // TODO To nie jest odporne na błędy
-        size_t point = std::stoul(pair.substr(0, space_idx));
-        double value = std::stod(pair.substr(space_idx + 1));
+        size_t point;
+        double value;
+
+        try {
+            point = std::stoul(pair.substr(0, space_idx));
+            value = std::stod(pair.substr(space_idx + 1));
+            // TODO delete below
+            // tga::io::log::info::custom("Parsed point: " + std::to_string(point) + ", value: " + std::to_string(value));
+        } catch (const std::exception &e) {
+            rinfo.err = ReceivedDataStatus::INVALID_VALUE;
+            tga::io::log::err::server::input(pair);
+            first_lf_idx = full_data.find('\n');
+            continue;
+        }
 
         // TODO Czy to należy sprawdzać?
         if (value < -5.0 || value > 5.0) {
@@ -1778,11 +1809,13 @@ void process_pairs(std::string &full_data, size_t &data_left, ReceiveInfo &rinfo
             continue;
         }
 
+        tga::io::log::info::custom("");
         MsgPtr put_msg = std::make_unique<PutMessage>(point, Rational(value));
         prepare_to_send(std::move(put_msg));
 
         // Aktualizuj indeks na końcu każdej iteracji
         first_lf_idx = full_data.find('\n');
+
     }
 }
 
@@ -1988,11 +2021,12 @@ void handle_poll_event(const size_t idx) {
             if (idx == 0) close_connection(idx); // FIXME idx nie potrzebne
             exit(1); // FIXME BRZYDKIE
         } else if (len_received == 0) { // EOF, server disconnected.
-            tga::io::log::info::client::server_disconnected(); // TODO trza rozrozniac ok disc i notok disck
-            rinfo.err = ReceivedDataStatus::DISCONNECTED;
+            // TODO Uncomment shit below
+            //tga::io::log::info::client::server_disconnected(); // TODO trza rozrozniac ok disc i notok disck
+            //rinfo.err = ReceivedDataStatus::DISCONNECTED;
             // FIXME Kod brzydki jak cholera, trzeba to rozdzielic na obsluga serwera i stdin
-            if (idx == 0) close_connection(idx);
-            exit(1); // FIXME BRZYDKIE
+            //if (idx == 0) close_connection(idx);
+            // exit(1); // FIXME BRZYDKIE
         } else handle_received_data(len_received, idx, rinfo);
     }
 
@@ -2010,6 +2044,7 @@ void handle_poll_event(const size_t idx) {
         if (sent_bytes < 0) {
             tga::io::log::err::error("write");
             close_connection(idx);
+            exit(1); // FIXME BRZYDKIE
         } else if (sent_bytes > 0) {
             bufman.set_buffer_pos(buffer_pos + sent_bytes);
 

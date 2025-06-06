@@ -163,7 +163,7 @@ MsgPtr ScoringMessage::deserialize(const std::string& msg_body, ReceiveInfo& rin
     auto it = std::sregex_iterator(msg_body.begin(), msg_body.end(), pair_re);
     auto end = std::sregex_iterator();
 
-    std::map<std::string, Rational> results;
+    std::vector<std::pair<std::string, Rational>> scores;
     std::string last_id;
 
     for (; it != end; ++it) {
@@ -171,16 +171,16 @@ MsgPtr ScoringMessage::deserialize(const std::string& msg_body, ReceiveInfo& rin
         Rational result((*it)[2].str());
 
         // Check lexicographical order of player IDs.
-        if (!last_id.empty() && player_id <= last_id) {
+        if (!last_id.empty() && player_id < last_id) {
             rinfo.err = ReceivedDataStatus::INVALID_VALUE;
             return nullptr;
         }
         last_id = player_id;
 
-        results.insert({player_id, result});
+        scores.emplace_back(player_id, result);
     }
 
-    return std::make_unique<ScoringMessage>(std::move(results));
+    return std::make_unique<ScoringMessage>(std::move(scores));
 }
 
 /**

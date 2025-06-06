@@ -10,13 +10,13 @@ Serwer po wykonaniu M dodawań ignoruje wiadomości od klientów.
 TODO Przypadek z tym poznym HELLO obczaic
 
 ERROR
-Klient z wczytywaniem z pliku
-Polaczenia powinny być two-way: na pollin i pollout.
-Ustawianie odpowiedniej fazy
+DONE Klient z wczytywaniem z pliku
+DONE Polaczenia powinny być two-way: na pollin i pollout.
+DONE Ustawianie odpowiedniej fazy
 
 TODO Zrobić pollfd na conn klienta podczas PUTa na POLLIN & POLLOUT, żeby można było przyjmować i wysyłać wiadomości.
-klient bez -a
-scoring przed bad put / state
+DONE klient bez -a
+DONE scoring przed bad put / state
 SCORING się pieprzy przy dwoch klientach o tej samej nazwie
 Buforowanie wysyłania, żeby wiadomości na siebie nie nachodziły
 Poprawic obsluge odebrania M komunikatow.

@@ -175,26 +175,33 @@ public:
  */
 class ScoringMessage : public Message {
 private:
-    std::map<std::string, Rational> scores;
+    std::vector<std::pair<std::string, Rational>> scores;
 
 public:
     static constexpr const char *msg_type = "SCORING";
 
-    ScoringMessage(std::map<std::string, Rational> scores) : scores(scores) {}
+    ScoringMessage(std::vector<std::pair<std::string, Rational>> scores) : scores(scores) {}
     static MsgPtr deserialize(const std::string& msg_body, ReceiveInfo &rinfo);
     std::string messageType() const override final { return msg_type; }
     // NOTE Check, if the order of players is correct in the for loop. I think yes.
     std::string messageContent() const override {
         std::string content;
 
-        for (const auto& [player, score] : scores) {
+        // Sort the scores lexicographically by player id (ASCII order)
+        std::vector<std::pair<std::string, Rational>> sorted_scores = scores;
+        std::sort(sorted_scores.begin(), sorted_scores.end(),
+            [](const auto& a, const auto& b) {
+                return a.first < b.first;
+            });
+
+        for (const auto& [player, score] : sorted_scores) {
             content += player + " " + static_cast<std::string>(score) + " ";
         }
 
         if (!content.empty()) {
             content.pop_back(); // Remove the last space
         }
-
+        
         return content;
     }
 
@@ -202,7 +209,7 @@ public:
      * @brief Returns the scores of the players.
      * @return A map of player IDs to their scores.
      */
-    std::map<std::string, Rational> getScores() const {
+    std::vector<std::pair<std::string, Rational>> get_scores() const {
         return scores; // TODO Chyba można nawet zrobić move.
     }
 };
