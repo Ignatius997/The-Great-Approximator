@@ -7,6 +7,8 @@ i należy sprawdzić EAGAIN, czy może nie należy ponownie wykonać e.g. read-a
 Strategia POLLIN-ów i POLLOUT-ów: ustawiaj ekskluzywne POLLOUT tylko wtedy, gdy to konieczne
 Serwer po wykonaniu M dodawań ignoruje wiadomości od klientów.
 
+TODO Przypadek z tym poznym HELLO obczaic
+
 ERROR
 Klient z wczytywaniem z pliku
 Polaczenia powinny być two-way: na pollin i pollout.

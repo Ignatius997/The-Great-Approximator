@@ -47,15 +47,18 @@ int main(int argc, char* argv[]) {
         if (poll_status < 0) { // Fail.
             error("poll");
             exit(1);
-        } else if (poll_status == 0) { // Timeout.
+        }
+    
+        // It is done before any manipulating with connections and timeouts
+        // to ensure, that there
+        if (should_send_scores()) {
+            send_scores();
+        }
+        
+        if (poll_status == 0) { // Timeout.
             update_timeouts();
             handle_timeouts();
-
-            // NOTE: Explanation, why sending scores is here in documentation.
-            // if (should_send_scores()) {
-            //     send_scores();
-            // }
-        } else { // success
+        } else { // Success.
             update_timeouts();
             handle_timeouts();
 

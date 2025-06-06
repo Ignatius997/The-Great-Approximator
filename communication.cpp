@@ -1396,6 +1396,14 @@ void handle_poll_event(const size_t idx) {
 
         ssize_t len_received = read(poll_fd.fd, buffer + pos, buffer_size - pos);
         if (len_received < 0) {
+            // TODO Delete below? Czyżby
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ECONNRESET) {
+                // No data to read, continue polling.
+                return;
+            } else {
+                tga::io::log::err::error("Errno: " + std::to_string(errno));
+            }
+
             tga::io::log::err::error("read from existing connection");
             close_client_connection(idx);
         } else if (len_received == 0) { // EOF, client disconnected.
@@ -1455,8 +1463,10 @@ void handle_poll_event(const size_t idx) {
 
                     if (messages_to_receive() > 0) {
                         poll_fd.events = POLLIN; // Switch to reading.
-                    } else if (timeouts.empty()) {
-                        send_scores();
+                    } else {
+                        if (should_send_scores()) {
+                            send_scores();
+                        }
                     }
                 }
             }
@@ -1949,11 +1959,12 @@ void prepare_to_send(MsgPtr msg) {
 
     // Prepare buffer
     BufferManager &bufman = buffer_managers[0];
-    std::memcpy(bufman.get_buffer(), serialized_msg.data(), msg_len); // FIXME Czy jesteśmy pewni, że możemy tak sobie to wstawić na początek bufora?
-    bufman.set_buffer_len(msg_len);
+    size_t buflen = bufman.get_buffer_len();
+    std::memcpy(bufman.get_buffer() + buflen,
+            serialized_msg.data(), msg_len);
+    bufman.set_buffer_len(buflen + msg_len);
     bufman.set_buffer_pos(0);
 }
-
 
 /**
  * @brief Polls in-out events from the server.
@@ -1974,7 +1985,8 @@ void handle_poll_event(const size_t idx) {
         ssize_t len_received = read(poll_fd.fd, buffer + buffer_pos, buffer_size - buffer_pos);
         if (len_received < 0) {
             tga::io::log::err::error("read");
-            close_connection(idx);
+            if (idx == 0) close_connection(idx); // FIXME idx nie potrzebne
+            exit(1); // FIXME BRZYDKIE
         } else if (len_received == 0) { // EOF, server disconnected.
             tga::io::log::info::client::server_disconnected(); // TODO trza rozrozniac ok disc i notok disck
             rinfo.err = ReceivedDataStatus::DISCONNECTED;
