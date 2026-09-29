@@ -1,6 +1,6 @@
 # The Great Approximator
 
-An implementation of the server and client for the **The Great Approximator** network game in C++ using sockets. The game consists of approximating a polynomial provided by the server over a series of steps.
+An implementation of the server and client for the **The Great Approximator** network game in C++ using sockets, written for computer networks course at MIMUW bachelor studies. The game consists of approximating a polynomial provided by the server over a series of steps.
 
 ## Game description
 
